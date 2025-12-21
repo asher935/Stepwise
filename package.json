@@ -16,6 +16,7 @@
     "clean": "rm -rf packages/*/dist packages/*/.turbo"
   },
   "devDependencies": {
+    "@playwright/test": "^1.57.0",
     "@types/bun": "^1.1.0",
     "typescript": "^5.3.3"
   }

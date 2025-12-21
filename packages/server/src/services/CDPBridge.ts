@@ -364,6 +364,12 @@ export class CDPBridge extends EventEmitter {
 
     switch (action.type) {
       case 'click':
+        const shouldTrace = process.env['STEPWISE_TRACE_INPUT'] === '1';
+        if (shouldTrace) {
+          const { x, y } = action.coordinates || { x: 0, y: 0 };
+          console.log('[CDP] Input.dispatchMouseEvent', { x, y, type: 'click' });
+        }
+        
         if (action.selector) {
           await page.click(action.selector, {
             button: action.data?.button || 'left',

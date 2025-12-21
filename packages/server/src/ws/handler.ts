@@ -362,6 +362,11 @@ export class WSHandler extends EventEmitter {
       const messageStr = data.toString('utf8');
       message = JSON.parse(messageStr);
 
+      const shouldTrace = process.env['STEPWISE_TRACE_INPUT'] === '1';
+      if (shouldTrace) {
+        console.log('[WS] recv', message);
+      }
+
       // Validate message structure
       if (!this.validateMessage(message)) {
         this.sendError(connection.ws, 'INVALID_MESSAGE', 'Invalid message format');

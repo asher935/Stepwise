@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@stepwise/shared": ["./packages/shared/src"],
+      "@stepwise/shared/*": ["./packages/shared/src/*"]
+    }
+  },
+  "references": [
+    { "path": "./packages/shared" },
+    { "path": "./packages/server" },
+    { "path": "./packages/client" }
+  ],
+  "include": [],
+  "exclude": ["node_modules", "dist"]
+}

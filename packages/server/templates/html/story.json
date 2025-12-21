@@ -1,0 +1,45 @@
+{
+  "id": "story",
+  "name": "Story Mode HTML Template",
+  "description": "Narrative-style template with cinematic transitions and immersive design",
+  "format": "html",
+  "type": "built-in",
+  "config": {
+    "styles": "/* Story mode styles */\n@import url('https://fonts.googleapis.com/css2?family=Merriweather:wght@300;400;700&family=Source+Sans+Pro:wght@400;600&display=swap');\n\nbody {\n  font-family: 'Merriweather', serif;\n  background: linear-gradient(to bottom, #f8f9fa, #e9ecef);\n  color: #2c3e50;\n  line-height: 1.8;\n}\n\n.export-header {\n  text-align: center;\n  padding: 4rem 2rem;\n  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);\n  color: white;\n  position: relative;\n  overflow: hidden;\n}\n\n.export-header::before {\n  content: '';\n  position: absolute;\n  top: 0;\n  left: 0;\n  right: 0;\n  bottom: 0;\n  background: url('data:image/svg+xml,<svg width=\"60\" height=\"60\" viewBox=\"0 0 60 60\" xmlns=\"http://www.w3.org/2000/svg\"><g fill=\"none\" fill-rule=\"evenodd\"><g fill=\"%23ffffff\" fill-opacity=\"0.05\"><polygon points=\"30 30 0 0 60 0\"/></g></g></svg>') repeat;\n  opacity: 0.3;\n}\n\n.export-header h1 {\n  font-size: 3.5rem;\n  font-weight: 700;\n  margin-bottom: 1rem;\n  position: relative;\n  z-index: 1;\n  text-shadow: 2px 2px 4px rgba(0,0,0,0.2);\n}\n\n.export-header .description {\n  font-size: 1.4rem;\n  font-family: 'Source Sans Pro', sans-serif;\n  opacity: 0.95;\n  max-width: 800px;\n  margin: 0 auto;\n  position: relative;\n  z-index: 1;\n}\n\n.table-of-contents {\n  background: white;\n  padding: 2rem;\n  margin: -2rem auto 3rem;\n  max-width: 800px;\n  box-shadow: 0 10px 30px rgba(0,0,0,0.1);\n  border-radius: 16px;\n  position: relative;\n}\n\n.table-of-contents h2 {\n  text-align: center;\n  color: #667eea;\n  font-size: 1.8rem;\n  margin-bottom: 1.5rem;\n}\n\n.table-of-contents ol {\n  display: grid;\n  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));\n  gap: 1rem;\n  padding: 0;\n  list-style: none;\n}\n\n.table-of-contents li {\n  padding: 1rem;\n  background: #f8f9fa;\n  border-radius: 8px;\n  transition: transform 0.2s ease, box-shadow 0.2s ease;\n}\n\n.table-of-contents li:hover {\n  transform: translateY(-2px);\n  box-shadow: 0 5px 15px rgba(102, 126, 234, 0.2);\n}\n\n.table-of-contents a {\n  color: #667eea;\n  font-weight: 600;\n  font-family: 'Source Sans Pro', sans-serif;\n  display: flex;\n  align-items: center;\n}\n\n.table-of-contents a::before {\n  content: counter(list-item);\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 32px;\n  height: 32px;\n  background: #667eea;\n  color: white;\n  border-radius: 50%;\n  margin-right: 12px;\n  font-size: 0.9rem;\n}\n\n.export-content {\n  max-width: 900px;\n  margin: 0 auto;\n  padding: 0 2rem;\n}\n\n.steps h2 {\n  text-align: center;\n  font-size: 2.5rem;\n  margin-bottom: 3rem;\n  position: relative;\n}\n\n.steps h2::after {\n  content: '';\n  display: block;\n  width: 80px;\n  height: 4px;\n  background: linear-gradient(to right, #667eea, #764ba2);\n  margin: 1rem auto;\n  border-radius: 2px;\n}\n\n.step {\n  background: white;\n  margin-bottom: 4rem;\n  border-radius: 16px;\n  overflow: hidden;\n  box-shadow: 0 10px 40px rgba(0,0,0,0.08);\n  position: relative;\n}\n\n.step::before {\n  content: '';\n  position: absolute;\n  top: 0;\n  left: 0;\n  width: 6px;\n  height: 100%;\n  background: linear-gradient(to bottom, #667eea, #764ba2);\n}\n\n.step-content {\n  padding: 2.5rem;\n}\n\n.step h3 {\n  font-size: 1.8rem;\n  color: #2c3e50;\n  margin-bottom: 1.5rem;\n  padding-left: 1rem;\n  position: relative;\n}\n\n.step h3::before {\n  content: counter(step-counter);\n  position: absolute;\n  left: -3rem;\n  top: 50%;\n  transform: translateY(-50%);\n  width: 48px;\n  height: 48px;\n  background: linear-gradient(135deg, #667eea, #764ba2);\n  color: white;\n  border-radius: 50%;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  font-weight: 700;\n  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);\n}\n\n.screenshot {\n  position: relative;\n  margin: 0;\n  background: #f8f9fa;\n}\n\n.screenshot::before {\n  content: '📸';\n  position: absolute;\n  top: 1rem;\n  right: 1rem;\n  background: white;\n  width: 40px;\n  height: 40px;\n  border-radius: 50%;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  font-size: 1.2rem;\n  box-shadow: 0 2px 8px rgba(0,0,0,0.1);\n}\n\n.screenshot img {\n  width: 100%;\n  height: auto;\n  display: block;\n  border: none;\n  box-shadow: none;\n  border-radius: 0;\n}\n\n.timestamp {\n  padding: 1rem 2.5rem;\n  background: #f8f9fa;\n  font-style: italic;\n  color: #6c757d;\n  font-size: 0.9rem;\n  border-top: 1px solid #e9ecef;\n}\n\n.timestamp::before {\n  content: '🕐 ';\n  margin-right: 0.5rem;\n}\n\n.export-footer {\n  text-align: center;\n  padding: 3rem 2rem;\n  margin-top: 4rem;\n  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);\n  color: white;\n}\n\n.export-footer p {\n  font-family: 'Source Sans Pro', sans-serif;\n  font-size: 1.1rem;\n  opacity: 0.9;\n}\n\n/* Chapter dividers */\n.chapter-divider {\n  text-align: center;\n  margin: 4rem 0;\n  position: relative;\n}\n\n.chapter-divider::before {\n  content: '';\n  position: absolute;\n  top: 50%;\n  left: 0;\n  right: 0;\n  height: 2px;\n  background: linear-gradient(to right, transparent, #667eea, transparent);\n}\n\n.chapter-divider span {\n  background: white;\n  padding: 0 2rem;\n  position: relative;\n  color: #667eea;\n  font-weight: 600;\n  font-family: 'Source Sans Pro', sans-serif;\n}\n\n/* Responsive adjustments */\n@media (max-width: 768px) {\n  .export-header h1 {\n    font-size: 2.5rem;\n  }\n  \n  .export-header .description {\n    font-size: 1.2rem;\n  }\n  \n  .step-content {\n    padding: 1.5rem;\n  }\n  \n  .table-of-contents ol {\n    grid-template-columns: 1fr;\n  }\n  \n  .step h3 {\n    font-size: 1.5rem;\n    padding-left: 3rem;\n  }\n  \n  .step h3::before {\n    left: 0;\n  }\n}",
+    "header": "<!-- Story mode header -->",
+    "footer": "<p style='font-size: 1rem; opacity: 0.9;'>Crafted with Stepwise • Transform your processes into compelling stories</p>",
+    "layout": {
+      "pageSize": "A4",
+      "orientation": "portrait",
+      "margins": {
+        "top": 0,
+        "right": 0,
+        "bottom": 0,
+        "left": 0
+      }
+    },
+    "colors": {
+      "primary": "#667eea",
+      "secondary": "#764ba2",
+      "accent": "#f093fb",
+      "background": "#ffffff",
+      "text": "#2c3e50"
+    },
+    "fonts": [
+      {
+        "name": "Merriweather",
+        "source": "https://fonts.googleapis.com/css2?family=Merriweather:wght@300;400;700&display=swap",
+        "weight": "400",
+        "style": "normal"
+      },
+      {
+        "name": "Source Sans Pro",
+        "source": "https://fonts.googleapis.com/css2?family=Source+Sans+Pro:wght@400;600;700&display=swap",
+        "weight": "400",
+        "style": "normal"
+      }
+    ]
+  },
+  "createdAt": "2024-01-01T00:00:00.000Z",
+  "updatedAt": "2024-01-01T00:00:00.000Z"
+}

@@ -42,9 +42,60 @@ function validateSessionStatus(status: unknown): SessionStatus {
 }
 
 /**
- * Response schemas for API documentation and validation
+/**
+ * Schema for session statistics
  */
-const SessionResponseSchema = {
+const SessionStatsSchema = t.Object({
+  stepCount: t.Number(),
+  duration: t.Number(),
+  screenshotCount: t.Number(),
+  consoleEventCount: t.Number(),
+  networkRequestCount: t.Number(),
+  domChangeCount: t.Number(),
+  userInputCount: t.Number(),
+  startTime: t.Optional(t.Date()),
+  endTime: t.Optional(t.Date()),
+  averageActionInterval: t.Optional(t.Number()),
+  totalDataSize: t.Optional(t.Number())
+});
+/**
+ * Schema for recording settings
+ */
+const RecordingSettingsSchema = t.Object({
+  viewport: t.Object({
+    width: t.Number(),
+    height: t.Number(),
+    deviceScaleFactor: t.Optional(t.Number()),
+    isMobile: t.Optional(t.Boolean()),
+    isLandscape: t.Optional(t.Boolean()),
+    hasTouch: t.Optional(t.Boolean())
+  }),
+  quality: t.Object({
+    screenshotQuality: t.Number(),
+    maxScreenshotSize: t.Optional(t.Object({
+      width: t.Number(),
+      height: t.Number()
+    })),
+    videoQuality: t.Optional(t.Union([t.Literal('low'), t.Literal('medium'), t.Literal('high'), t.Literal('ultra')])),
+    frameRate: t.Optional(t.Number()),
+    compressScreenshots: t.Boolean(),
+    compressionFormat: t.Optional(t.Union([t.Literal('jpeg'), t.Literal('png'), t.Literal('webp')]))
+  }),
+  recordConsoleLogs: t.Boolean(),
+  recordNetworkRequests: t.Boolean(),
+  recordDomChanges: t.Boolean(),
+  recordScrollPositions: t.Boolean(),
+  recordUserInputs: t.Boolean(),
+  maskSensitiveData: t.Boolean(),
+  maskedSelectors: t.Optional(t.Array(t.String())),
+  maxDuration: t.Optional(t.Number()),
+  autoSave: t.Boolean(),
+  autoSaveInterval: t.Optional(t.Number())
+});
+
+/**
+ * Response schemas for API documentation and validation
+ */const SessionResponseSchema = {
   id: t.String(),
   title: t.String(),
   description: t.String(),
@@ -173,12 +224,7 @@ export function createSessionRoutes(): Elysia {
       body: t.Object({
         title: t.Optional(t.String({ minLength: 1, maxLength: 255 })),
         description: t.Optional(t.String({ maxLength: 1000 })),
-        settings: t.Optional(t.Pick(RecordingSettings, [
-          'viewport', 'quality', 'recordConsoleLogs', 'recordNetworkRequests',
-          'recordDomChanges', 'recordScrollPositions', 'recordUserInputs',
-          'maskSensitiveData', 'maskedSelectors', 'maxDuration', 'autoSave', 'autoSaveInterval'
-        ])),
-        tags: t.Optional(t.Array(t.Object({
+        settings: t.Optional(RecordingSettingsSchema),        tags: t.Optional(t.Array(t.Object({
           id: t.String(),
           name: t.String(),
           color: t.Optional(t.String()),
@@ -459,12 +505,7 @@ export function createSessionRoutes(): Elysia {
           t.Literal('idle'), t.Literal('recording'), t.Literal('paused'),
           t.Literal('completed'), t.Literal('error')
         ])),
-        settings: t.Optional(t.Pick(RecordingSettings, [
-          'viewport', 'quality', 'recordConsoleLogs', 'recordNetworkRequests',
-          'recordDomChanges', 'recordScrollPositions', 'recordUserInputs',
-          'maskSensitiveData', 'maskedSelectors', 'maxDuration', 'autoSave', 'autoSaveInterval'
-        ])),
-        tags: t.Optional(t.Array(t.Object({
+        settings: t.Optional(RecordingSettingsSchema),        tags: t.Optional(t.Array(t.Object({
           id: t.String(),
           name: t.String(),
           color: t.Optional(t.String()),
@@ -650,7 +691,7 @@ export function createSessionRoutes(): Elysia {
         200: t.Object({
           success: t.Literal(true),
           data: t.Object({
-            stats: SessionStats,
+            stats: SessionStatsSchema,
             calculated: t.Object({
               currentDuration: t.Number(),
               averageStepTime: t.Number(),
@@ -765,7 +806,7 @@ export function createSessionRoutes(): Elysia {
             instanceId: t.String(),
             token: t.String(),
             sessionToken: t.String(),
-            settings: RecordingSettings,
+            settings: RecordingSettingsSchema,
             message: t.String()
           })
         }),
@@ -890,7 +931,7 @@ export function createSessionRoutes(): Elysia {
             instanceId: t.String(),
             launched: t.Boolean(),
             recording: t.Boolean(),
-            settings: RecordingSettings,
+            settings: RecordingSettingsSchema,
             wsEndpoint: t.String()
           })
         }),

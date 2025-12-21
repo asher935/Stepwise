@@ -7,7 +7,7 @@
 
 import { Elysia, t } from 'elysia';
 import { cors } from '@elysiajs/cors';
-import { promiseTimeout } from 'promise-timeout';
+import { timeout as promiseTimeout } from 'promise-timeout';
 import { createReadStream, existsSync } from 'fs';
 import { join } from 'path';
 import { lookup } from 'mrmime';

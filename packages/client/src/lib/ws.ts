@@ -104,7 +104,13 @@ class WebSocketClient {
 
   send(message: ClientMessage): void {
     if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify(message));
+      const wrappedMessage = {
+        id: crypto.randomUUID(),
+        type: 'BROWSER_ACTION',
+        timestamp: Date.now(),
+        payload: message
+      };
+      this.ws.send(JSON.stringify(wrappedMessage));
     }
   }
 

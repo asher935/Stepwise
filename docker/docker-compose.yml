@@ -1,0 +1,30 @@
+services:
+  stepwise:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - MAX_SESSIONS=${MAX_SESSIONS:-5}
+      - IDLE_TIMEOUT_MS=${IDLE_TIMEOUT_MS:-1800000}
+      - MAX_STEPS_PER_SESSION=${MAX_STEPS_PER_SESSION:-200}
+      - BROWSER_VIEWPORT_WIDTH=${BROWSER_VIEWPORT_WIDTH:-1280}
+      - BROWSER_VIEWPORT_HEIGHT=${BROWSER_VIEWPORT_HEIGHT:-800}
+      - SCREENCAST_QUALITY=${SCREENCAST_QUALITY:-80}
+      - SCREENCAST_MAX_FPS=${SCREENCAST_MAX_FPS:-15}
+    shm_size: '2gb'
+    restart: unless-stopped
+    volumes:
+      - stepwise-tmp:/tmp/stepwise
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  stepwise-tmp:

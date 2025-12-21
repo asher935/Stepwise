@@ -10,7 +10,10 @@
       "types": "./src/index.ts",
       "import": "./src/index.ts"
     },
-    "./*": "./src/*.ts"
+    "./*": {
+      "types": "./src/*.ts",
+      "import": "./src/*.ts"
+    }
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

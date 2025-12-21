@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  stepwise:
+    image: stepwise:latest
+    ports:
+      - "80:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - MAX_SESSIONS=10
+      - IDLE_TIMEOUT_MS=3600000
+      - MAX_STEPS_PER_SESSION=500
+    shm_size: '4gb'
+    restart: always
+    volumes:
+      - stepwise-tmp:/tmp/stepwise
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 8G
+        reservations:
+          cpus: '2'
+          memory: 4G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  stepwise-tmp:

@@ -412,17 +412,19 @@ async function handleMouseInput(
       case 'move':
         await state.bridge.sendMouseInput('move', x, y, btn);
         break;
-        
+
       case 'down':
+        // Prepare screenshot before sending mouse down to browser
+        await state.recorder.prepareClickScreenshot(x, y, btn);
         await state.bridge.sendMouseInput('down', x, y, btn);
         break;
-        
+
       case 'up':
         await state.bridge.sendMouseInput('up', x, y, btn);
         break;
-        
+
       case 'click':
-        // Record click action
+        // Record click action using pre-captured screenshot
         await state.recorder.recordClick(x, y, btn);
         break;
     }

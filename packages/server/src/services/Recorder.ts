@@ -26,6 +26,16 @@ export class Recorder {
   private typeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   private lastScrollTime: number = 0;
   private scrollDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private pendingClickScreenshot: {
+    x: number;
+    y: number;
+    button: 'left' | 'right' | 'middle';
+    screenshotData: Buffer;
+    screenshotPath: string;
+    screenshotDataUrl: string;
+    elementInfo: any;
+    clip: any;
+  } | null = null;
 
   constructor(options: RecorderOptions) {
     this.session = options.session;
@@ -181,7 +191,47 @@ export class Recorder {
   }
 
   /**
-   * Records a click action
+   * Prepares screenshot data before a click action
+   * This should be called before sending mouse down event to browser
+   */
+  async prepareClickScreenshot(
+    x: number,
+    y: number,
+    button: 'left' | 'right' | 'middle' = 'left'
+  ): Promise<void> {
+    if (this.isStepLimitReached()) return;
+
+    // Flush any pending type step
+    await this.flushPendingTypeStep();
+
+    // Get element info at click point
+    const elementInfo = await this.cdpBridge.getElementAtPoint(x, y);
+
+    const clip = await this.getClipForTarget(
+      elementInfo?.boundingBox ?? null,
+      { x, y }
+    );
+
+    // Capture screenshot immediately (before any mouse events are sent)
+    const screenshotData = await this.captureScreenshot(0, clip ?? undefined);
+    const screenshotPath = await this.saveScreenshot(screenshotData);
+    const screenshotDataUrl = this.toScreenshotDataUrl(screenshotData);
+
+    // Store for later use in recordClick
+    this.pendingClickScreenshot = {
+      x,
+      y,
+      button,
+      screenshotData,
+      screenshotPath,
+      screenshotDataUrl,
+      elementInfo,
+      clip
+    };
+  }
+
+  /**
+   * Records a click action using previously captured screenshot
    */
   async recordClick(
     x: number,
@@ -190,19 +240,39 @@ export class Recorder {
   ): Promise<Step | null> {
     if (this.isStepLimitReached()) return null;
 
-    // Flush any pending type step
-    await this.flushPendingTypeStep();
+    let screenshotData: Buffer;
+    let screenshotPath: string;
+    let screenshotDataUrl: string;
+    let elementInfo: any;
 
-    // Get element info at click point
-    const elementInfo = await this.cdpBridge.getElementAtPoint(x, y);
-    
-    const clip = await this.getClipForTarget(
-      elementInfo?.boundingBox ?? null,
-      { x, y }
-    );
-    const screenshotData = await this.captureScreenshot(200, clip ?? undefined);
-    const screenshotPath = await this.saveScreenshot(screenshotData);
-    const screenshotDataUrl = this.toScreenshotDataUrl(screenshotData);
+    // Use pre-captured screenshot if available and coordinates match
+    if (this.pendingClickScreenshot &&
+        this.pendingClickScreenshot.x === x &&
+        this.pendingClickScreenshot.y === y &&
+        this.pendingClickScreenshot.button === button) {
+
+      const pending = this.pendingClickScreenshot;
+      screenshotData = pending.screenshotData;
+      screenshotPath = pending.screenshotPath;
+      screenshotDataUrl = pending.screenshotDataUrl;
+      elementInfo = pending.elementInfo;
+
+      // Clear the pending screenshot
+      this.pendingClickScreenshot = null;
+    } else {
+      // Fallback: capture screenshot now (this shouldn't normally happen)
+      await this.flushPendingTypeStep();
+
+      elementInfo = await this.cdpBridge.getElementAtPoint(x, y);
+
+      const clip = await this.getClipForTarget(
+        elementInfo?.boundingBox ?? null,
+        { x, y }
+      );
+      screenshotData = await this.captureScreenshot(0, clip ?? undefined);
+      screenshotPath = await this.saveScreenshot(screenshotData);
+      screenshotDataUrl = this.toScreenshotDataUrl(screenshotData);
+    }
 
     // Create highlight
     const target: StepHighlight = elementInfo
@@ -227,7 +297,7 @@ export class Recorder {
 
     this.session.steps.push(step);
     this.emit('step:created', step);
-    
+
     return step;
   }
 
@@ -566,6 +636,7 @@ export class Recorder {
     if (this.scrollDebounceTimer) {
       clearTimeout(this.scrollDebounceTimer);
     }
+    this.pendingClickScreenshot = null;
     await this.flushPendingTypeStep();
   }
 }

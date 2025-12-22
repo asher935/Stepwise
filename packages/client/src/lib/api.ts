@@ -92,7 +92,8 @@ class ApiClient {
   async exportSession(
     sessionId: string,
     options: {
-      format: ExportFormat;
+      format?: ExportFormat;
+      formats?: ExportFormat[];
       title?: string;
       includeScreenshots?: boolean;
       password?: string;

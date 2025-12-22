@@ -1,8 +1,0 @@
-{
-  "name": "Stepwise",
-  "description": "An AI-powered browser automation and step-by-step guide creator with high-performance glassmorphic UI.",
-  "requestFramePermissions": [
-    "camera",
-    "microphone"
-  ]
-}

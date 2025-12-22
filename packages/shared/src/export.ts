@@ -5,7 +5,8 @@ export type ExportFormat = 'pdf' | 'docx' | 'markdown' | 'html' | 'stepwise';
 
 /** Export request options */
 export interface ExportOptions {
-  format: ExportFormat;
+  format?: ExportFormat;
+  formats?: ExportFormat[];
   title?: string;
   includeScreenshots?: boolean;
   password?: string;

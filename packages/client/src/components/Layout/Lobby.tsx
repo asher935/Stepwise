@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { Play, Upload, Sparkles, Layers, ShieldCheck, Search, FileUp } from 'lucide-react';
+import { Play, Lock, Layers, ShieldCheck, Search, FileUp, Shield } from 'lucide-react';
 import { useSessionStore } from '@/stores/sessionStore';
 
 interface LobbyProps {
@@ -29,8 +29,8 @@ export function Lobby({ onImportClick }: LobbyProps) {
         {/* Header Section */}
         <div className="text-center space-y-6">
           <div className="inline-flex items-center px-4 py-1.5 rounded-full bg-white/40 border border-white/60 text-[#E67E22] text-xs font-bold uppercase tracking-wider mb-2">
-            <Sparkles className="w-3.5 h-3.5 mr-2" />
-            AI-Driven Automation
+            <Shield className="w-3.5 h-3.5 mr-2" />
+            100% Private & Local
           </div>
           <h1 className="text-6xl md:text-8xl font-black tracking-tight text-[#2D241E]">
             Stepwise<span className="text-[#E67E22]">!</span>
@@ -87,9 +87,9 @@ export function Lobby({ onImportClick }: LobbyProps) {
             bgColor="bg-[#FAD7BD]/30"
           />
           <BentoItem
-            icon={<Sparkles className="w-6 h-6 text-[#2D241E]" />}
-            title="Gemini Logic"
-            desc="AI writes your technical documentation in real-time."
+            icon={<Lock className="w-6 h-6 text-[#2D241E]" />}
+            title="Zero-Storage"
+            desc="No database, no cloud accounts, and no tracking."
             bgColor="bg-white"
             isFeatured
           />

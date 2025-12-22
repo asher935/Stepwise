@@ -4,10 +4,14 @@
 ```bash
 bun install              # Install dependencies
 bun run dev              # Start all dev servers (client:5173, server:3000)
+bun run dev:server       # Start backend only on :3000
+bun run dev:client       # Start frontend only on :5173
 bun run build            # Build all packages
 bun run typecheck        # Type check all packages
 bun run lint             # Lint all packages
-bun test                 # Run tests (in packages/server)
+bun run clean            # Clean build artifacts
+bun run test             # Run tests (server package)
+bun run playwright test  # Run Playwright tests
 ```
 
 ## Code Style

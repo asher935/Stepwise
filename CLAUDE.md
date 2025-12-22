@@ -58,7 +58,8 @@ The core architecture relies on real-time WebSocket messages between client and 
 - `step:new` - New step recorded during user interaction
 - `step:updated`/`step:deleted` - Step modifications
 - `session:state` - Current session state updates
-- `error`/`cdp:error`/`input:error` - Error handling
+- `element:hover` - Element information at coordinates for UI hover feedback
+- `error`/`cdp:error`/`input:error`/`rate:limited`/`session:unhealthy` - Error handling
 
 ### Chrome DevTools Protocol (CDP) Integration
 The `CDPBridge` class (`packages/server/src/services/CDPBridge.ts`) handles browser automation:
@@ -79,6 +80,37 @@ Sessions are managed through `SessionManager` with:
 Zustand stores handle global state:
 - `sessionStore`: Session data, steps, connection status
 - Component-level state for UI interactions, modals, forms
+
+## Non-Obvious Architecture Details
+
+### Recorder Event Patterns
+The Recorder service uses several important patterns:
+
+- **Two-Stage Click Recording**: For clicks, screenshots are captured BEFORE sending mouse events to ensure the visual state reflects the pre-click condition. This is done via a prepare/record pattern.
+
+- **Debounced Type Input**: Individual keyboard events are debounced and accumulated into a single "type" step rather than creating a step per keystroke. This produces cleaner guides.
+
+- **Scroll Accumulation**: Multiple scroll events are accumulated into a single scroll step with total distance, reducing step clutter.
+
+- **Screenshot Clipping**: Smart screenshot clipping based on element position (bounding boxes) to capture relevant regions.
+
+### Element Highlighting
+Element highlights are injected directly into the browser page via CDP (not just UI overlays):
+- Highlights are injected as DOM elements in the remote browser page
+- This ensures highlights appear in screenshots
+- Highlights are cleared before input actions are executed
+
+### Session-Scoped Directories
+Each session gets its own temporary directory for screenshots and assets:
+- Paths are scoped per session (e.g., `/tmp/stepwise/{sessionId}/`)
+- Automatic cleanup on session end
+- Prevents resource leaks and conflicts
+
+### Health Monitoring
+Two-level health checking:
+- **Session-level**: Rate limiting, idle timeout, input validation
+- **CDP-level**: Browser connection health, automatic recovery on failure
+- Graceful error responses with detailed context
 
 ## Project Structure
 
@@ -130,33 +162,6 @@ Key environment variables (see README.md for complete list):
 - `BROWSER_VIEWPORT_WIDTH/HEIGHT`: Browser dimensions
 - `MAX_SESSIONS`: Concurrent session limit
 - `IDLE_TIMEOUT_MS`: Session auto-cleanup timeout
-
-## Development Notes
-
-### Rate Limiting
-WebSocket inputs are rate-limited to prevent abuse:
-- 60 inputs per second per connection
-- Automatic health checks before processing inputs
-- Graceful error responses when limits exceeded
-
-### Security Considerations
-- Session tokens provide authentication
-- Typed content automatically redacted for privacy
-- Input validation on all WebSocket messages
-- XSS prevention through proper escaping
-
-### Performance Optimizations
-- Frame throttling for screencast (configurable FPS)
-- Efficient image compression for streaming
-- Connection pooling and cleanup
-- Rate limiting to prevent resource abuse
-
-### Error Handling
-Comprehensive error handling throughout:
-- WebSocket message validation
-- CDP session health monitoring
-- Graceful degradation on browser issues
-- Clear error messages to users
 
 ## Testing
 

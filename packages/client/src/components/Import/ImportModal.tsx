@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { FileUp, Lock, X, UploadCloud, FileCheck, Eye, EyeOff } from 'lucide-react';
 import type { NavigateStep, Step } from '@stepwise/shared';
 import { api } from '@/lib/api';
@@ -103,6 +103,18 @@ export function ImportModal({ open, onOpenChange, setGuideTitle }: ImportModalPr
     setPassword('');
     setError(null);
   }, [onOpenChange]);
+
+  // Close modal on ESC key press
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && open) {
+        handleClose();
+      }
+    };
+
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [open, handleClose]);
 
   const needsPassword = file ? file.name.endsWith('.stepwise') : false;
 

@@ -15,6 +15,18 @@ export function ScreenshotModal({ open, onOpenChange, screenshotDataUrl, stepNum
   const [editedCaption, setEditedCaption] = useState(caption);
   const [isSaving, setIsSaving] = useState(false);
 
+  // Close modal on ESC key press
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && open) {
+        onOpenChange(false);
+      }
+    };
+
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [open, onOpenChange]);
+
   // Sync editedCaption when caption prop changes
   useEffect(() => {
     setEditedCaption(caption);

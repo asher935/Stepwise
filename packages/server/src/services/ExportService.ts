@@ -20,7 +20,7 @@ export class ExportService {
   }
 
   /**
-   * Exports the session to the specified format
+   * Exports the session to the specified format(s)
    */
   async export(options: ExportOptions): Promise<ExportResult> {
     const exportDir = join(env.TEMP_DIR, 'exports', this.session.id);
@@ -28,7 +28,98 @@ export class ExportService {
 
     const title = options.title ?? `Stepwise Guide - ${new Date().toLocaleDateString()}`;
 
-    switch (options.format) {
+    // Support for multiple formats
+    const formats = options.formats ?? (options.format ? [options.format] : []);
+
+    if (formats.length === 0) {
+      throw new Error('At least one format must be specified');
+    }
+
+    // Single format export
+    if (formats.length === 1) {
+      const format = formats[0]!;
+      switch (format) {
+        case 'pdf':
+          return await this.exportPDF(exportDir, title, options);
+        case 'docx':
+          return await this.exportDOCX(exportDir, title, options);
+        case 'markdown':
+          return await this.exportMarkdown(exportDir, title, options);
+        case 'html':
+          return await this.exportHTML(exportDir, title, options);
+        case 'stepwise':
+          return await this.exportStepwise(exportDir, title, options);
+        default: {
+          const exhaustiveCheck: never = format;
+          throw new Error(`Unsupported export format: ${exhaustiveCheck}`);
+        }
+      }
+    }
+
+    // Multi-format export - create a zip with all formats
+    return await this.exportMultiple(exportDir, title, formats, options);
+  }
+
+  /**
+   * Exports to multiple formats in a single ZIP file
+   */
+  private async exportMultiple(
+    exportDir: string,
+    title: string,
+    formats: ExportFormat[],
+    options: ExportOptions
+  ): Promise<ExportResult> {
+    const filename = `${this.sanitizeFilename(title)}.zip`;
+    const filepath = join(exportDir, filename);
+
+    return new Promise((resolve, reject) => {
+      const output = createWriteStream(filepath);
+      const archive = archiver('zip', { zlib: { level: 9 } });
+
+      output.on('close', () => {
+        resolve({
+          filename,
+          mimeType: 'application/zip',
+          size: archive.pointer(),
+        });
+      });
+
+      archive.on('error', reject);
+      archive.pipe(output);
+
+      // Export each format and add to zip
+      const exportPromises = formats.map(async (format) => {
+        const tempDir = join(exportDir, 'temp');
+        const result = await this.exportSingleFormat(tempDir, title, format, options);
+        const sourceFile = join(tempDir, result.filename);
+        const destFile = result.filename;
+
+        try {
+          const fileBuffer = await readFile(sourceFile);
+          archive.append(fileBuffer, { name: destFile });
+        } catch (err) {
+          console.error(`Failed to add ${result.filename} to zip:`, err);
+        }
+      });
+
+      void Promise.all(exportPromises).then(() => {
+        void archive.finalize();
+      }).catch(reject);
+    });
+  }
+
+  /**
+   * Exports a single format and returns the result (used by multi-format export)
+   */
+  private async exportSingleFormat(
+    exportDir: string,
+    title: string,
+    format: ExportFormat,
+    options: ExportOptions
+  ): Promise<ExportResult> {
+    await mkdir(exportDir, { recursive: true });
+
+    switch (format) {
       case 'pdf':
         return await this.exportPDF(exportDir, title, options);
       case 'docx':
@@ -40,7 +131,7 @@ export class ExportService {
       case 'stepwise':
         return await this.exportStepwise(exportDir, title, options);
       default: {
-        const exhaustiveCheck: never = options.format;
+        const exhaustiveCheck: never = format;
         throw new Error(`Unsupported export format: ${exhaustiveCheck}`);
       }
     }

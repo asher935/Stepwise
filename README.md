@@ -1,6 +1,15 @@
-# Stepwise
+<div align="center">
+
+[![Stepwise](./.github/assets/lobby.png)](https://github.com/asher935/Stepwise/#Stepwise)
+
+[![Preview](./.github/assets/editor.png)](https://github.com/asher935/Stepwise#Stepwise)
+
+
+</div>
 
 A Docker-deployable web application for recording browser actions into step-by-step guides with screenshots. Self-hosted alternative to Tango.ai.
+
+
 
 ## Features
 
@@ -19,56 +28,173 @@ A Docker-deployable web application for recording browser actions into step-by-s
 - **Browser Control**: Playwright with Chrome DevTools Protocol
 - **Export**: Playwright PDF, docx library for Word
 
-## Quick Start
+## Getting Started
 
-### Using Docker (Recommended)
+Choose one of the following methods to run Stepwise:
+
+### 1. Local Development (Recommended for Development)
+
+Run directly on your machine with hot-reload for rapid development.
+
+**Prerequisites:**
+- [Bun](https://bun.sh/) runtime (v1+)
+- Node.js-compatible environment
+
+**Steps:**
 
 ```bash
 # Clone the repository
 git clone https://github.com/your-org/stepwise.git
 cd stepwise
 
-# Start with Docker Compose
-cd docker
-docker compose up -d
-
-# If you make code changes, rebuild the image
-docker compose up -d --build
-
-# If you suspect a cached build, force a clean rebuild
-docker compose build --no-cache
-docker compose up -d
-
-# Open in browser
-open http://localhost:3000
-```
-
-### Docker Development (Live Reload)
-
-```bash
-# From repo root
-docker compose -f docker/docker-compose.dev.yml up --build
-
-# Or from docker/ directory
-cd docker
-docker compose -f docker-compose.dev.yml up --build
-```
-
-This uses bind mounts and runs `bun run dev` inside the container, so changes hot-reload without rebuilding the image. Rebuild only if `docker/Dockerfile.dev` changes.
-
-### Local Development
-
-```bash
 # Install dependencies
 bun install
 
-# Start development servers
+# Start all development servers (backend + frontend)
 bun run dev
 
-# Or start individually
-bun run dev:server  # Backend on :3000
-bun run dev:client  # Frontend on :5173
+# Or start individually:
+# bun run dev:server  # Backend runs on http://localhost:3000
+# bun run dev:client  # Frontend runs on http://localhost:5173
 ```
+
+**Access the application:** http://localhost:3000
+
+---
+
+### 2. Docker Development (Live Reload)
+
+Run inside Docker with hot-reload enabled. Ideal for testing containerized behavior without rebuilding images on every change.
+
+**Prerequisites:**
+- Docker Desktop or Docker Engine
+- Docker Compose plugin
+
+**Steps:**
+
+```bash
+# Clone the repository
+git clone https://github.com/your-org/stepwise.git
+cd stepwise
+
+# Start development container with live reload
+docker compose -f docker/docker-compose.dev.yml up --build
+
+# Or run in detached mode
+docker compose -f docker/docker-compose.dev.yml up -d --build
+```
+
+**How it works:**
+- Uses bind mounts to sync your local code into the container
+- Runs `bun run dev` inside the container
+- Changes to your code hot-reload automatically
+- Only rebuild if `docker/Dockerfile.dev` changes
+
+**Access the application:** http://localhost:3000
+
+**To stop:**
+```bash
+docker compose -f docker/docker-compose.dev.yml down
+```
+
+---
+
+### 3. Docker Production (Recommended for Deployment)
+
+Run the production-optimized Docker image with pre-built assets.
+
+**Prerequisites:**
+- Docker Desktop or Docker Engine
+- Docker Compose plugin
+
+**Option A: Using docker-compose.yml (Production-ready)**
+
+```bash
+# Clone the repository
+git clone https://github.com/your-org/stepwise.git
+cd stepwise
+
+# Build and start production container
+cd docker
+docker compose up -d --build
+
+# View logs
+docker compose logs -f
+
+# Stop the container
+docker compose down
+```
+
+**Access the application:** http://localhost:3000 (or configured port)
+
+**Option B: Using docker-compose.prod.yml (Optimized for production)**
+
+This configuration includes resource limits, log rotation, and runs on port 80.
+
+```bash
+# Build the image first
+cd docker
+docker build -t stepwise:latest -f Dockerfile ..
+
+# Start with production compose file
+docker compose -f docker-compose.prod.yml up -d
+
+# View logs
+docker compose -f docker-compose.prod.yml logs -f
+
+# Stop the container
+docker compose -f docker-compose.prod.yml down
+```
+
+**Access the application:** http://localhost (port 80)
+
+**Production features:**
+- Optimized multi-stage build
+- Built frontend assets served from backend
+- Resource limits (4 CPUs, 8GB RAM max)
+- Log rotation (10MB per file, 3 files max)
+- Health checks enabled
+- Automatic restart on failure
+
+**Customizing production settings:**
+
+Edit `docker/docker-compose.prod.yml` to adjust:
+- Port mapping (default: `80:3000`)
+- Resource limits (CPUs, memory)
+- Session limits (MAX_SESSIONS, timeouts)
+- SHM size for browser (default: 4GB)
+
+---
+
+## Environment Configuration
+
+### Local & Development Docker
+
+Create a `.env` file in the project root (for local) or edit `docker/docker-compose.dev.yml` (for Docker):
+
+```bash
+# Server
+PORT=3000
+
+# Session Limits
+MAX_SESSIONS=5
+IDLE_TIMEOUT_MS=1800000          # 30 minutes
+MAX_STEPS_PER_SESSION=200
+
+# Browser Configuration
+BROWSER_VIEWPORT_WIDTH=1280
+BROWSER_VIEWPORT_HEIGHT=800
+
+# Screenshot/Screencast Settings
+SCREENSHOT_FORMAT=png            # png or jpeg
+SCREENSHOT_QUALITY=95            # 1-100 (only for jpeg)
+SCREENCAST_QUALITY=80            # 1-100
+SCREENCAST_MAX_FPS=15            # Frame rate limit
+```
+
+### Production Docker
+
+Edit `docker/docker-compose.prod.yml` or `docker/docker-compose.yml` to override defaults. See [Environment Variables](#environment-variables) for the complete list.
 
 ## Project Structure
 
@@ -136,18 +262,39 @@ stepwise/
 ### Scripts
 
 ```bash
-bun run dev          # Start all dev servers
+bun run dev          # Start all dev servers (backend + frontend)
+bun run dev:server   # Start backend only on :3000
+bun run dev:client   # Start frontend only on :5173
 bun run build        # Build all packages
 bun run typecheck    # Type check all packages
 bun run lint         # Lint all packages
 bun run clean        # Clean build artifacts
+bun run test         # Run server tests
 ```
 
-### Building Docker Image
+### Building Production Assets Locally
+
+If you want to build production assets before deploying:
 
 ```bash
-cd docker
-docker build -t stepwise:latest -f Dockerfile ..
+# Build all packages
+bun run build
+
+# The client assets will be in packages/client/dist
+# The server will serve these pre-built assets
+```
+
+### Running Tests
+
+```bash
+# Run all tests
+bun run test
+
+# Run Playwright end-to-end tests
+bun run playwright test
+
+# Run Playwright tests with UI
+bun run playwright test --ui
 ```
 
 ## Security Considerations

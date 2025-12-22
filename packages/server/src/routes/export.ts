@@ -36,14 +36,32 @@ export const exportRoutes = new Elysia({ prefix: '/api/export' })
       
       try {
         const exportService = new ExportService(session);
+
+        // Support both single format and multiple formats
+        const formats = body.formats
+          ? body.formats as ExportFormat[]
+          : body.format
+            ? [body.format as ExportFormat]
+            : [];
+
+        if (formats.length === 0) {
+          return {
+            success: false,
+            error: {
+              code: ERROR_CODES.EXPORT_FAILED,
+              message: 'At least one format must be specified',
+            },
+          };
+        }
+
         const result = await exportService.export({
-          format: body.format as ExportFormat,
+          formats,
           title: body.title,
           includeScreenshots: body.includeScreenshots ?? true,
           password: body.password,
           theme: body.theme as 'light' | 'dark' | undefined,
         });
-        
+
         return { success: true, data: result };
       } catch (error) {
         return { 
@@ -60,13 +78,20 @@ export const exportRoutes = new Elysia({ prefix: '/api/export' })
         sessionId: t.String(),
       }),
       body: t.Object({
-        format: t.Union([
+        format: t.Optional(t.Union([
           t.Literal('pdf'),
           t.Literal('docx'),
           t.Literal('markdown'),
           t.Literal('html'),
           t.Literal('stepwise'),
-        ]),
+        ])),
+        formats: t.Optional(t.Array(t.Union([
+          t.Literal('pdf'),
+          t.Literal('docx'),
+          t.Literal('markdown'),
+          t.Literal('html'),
+          t.Literal('stepwise'),
+        ]))),
         title: t.Optional(t.String()),
         includeScreenshots: t.Optional(t.Boolean()),
         password: t.Optional(t.String()),

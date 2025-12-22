@@ -11,12 +11,14 @@ export interface ServerSession {
   steps: Step[];
   url: string | null;
   title: string | null;
+  startUrl: string | null;
   createdAt: number;
   lastActivityAt: number;
   error?: string;
   screencastSessionId?: number;
   healthStatus: 'healthy' | 'unhealthy' | 'unknown';
   lastHealthCheck: number;
+  initialNavigationRecorded: boolean;
 }
 
 export interface CreateSessionOptions {

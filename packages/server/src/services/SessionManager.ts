@@ -107,10 +107,12 @@ class SessionManager {
       steps: [],
       url: null,
       title: null,
+      startUrl: null,
       createdAt: now,
       lastActivityAt: now,
       healthStatus: 'unknown',
       lastHealthCheck: now,
+      initialNavigationRecorded: false,
     };
 
     this.sessions.set(sessionId, session);
@@ -161,6 +163,7 @@ class SessionManager {
       const cdp = await page.context().newCDPSession(page);
 
       // Navigate to start URL
+      session.startUrl = startUrl ?? null;
       const url = startUrl ?? 'about:blank';
       await page.goto(url, { waitUntil: 'domcontentloaded' });
 

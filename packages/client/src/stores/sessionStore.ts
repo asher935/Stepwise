@@ -18,9 +18,11 @@ interface SessionStore {
   endSession: () => Promise<void>;
   updateStep: (stepId: string, updates: { caption?: string }) => Promise<void>;
   deleteStep: (stepId: string) => Promise<void>;
+  setSteps: (steps: Step[]) => void;
   setFrame: (frame: string) => void;
   setConnected: (connected: boolean) => void;
   setError: (error: string | null) => void;
+  setSessionState: (state: SessionState | null) => void;
   reset: () => void;
 
   initWebSocket: () => () => void;
@@ -70,14 +72,17 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     const { sessionId } = get();
     if (!sessionId) return;
 
+    let endError: string | null = null;
     try {
       await api.endSession(sessionId);
+    } catch (error) {
+      endError = error instanceof Error ? error.message : 'Failed to end session';
+    } finally {
       wsClient.disconnect();
       get().reset();
-    } catch (error) {
-      set({ 
-        error: error instanceof Error ? error.message : 'Failed to end session' 
-      });
+      if (endError) {
+        set({ error: endError });
+      }
     }
   },
 
@@ -114,6 +119,10 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     }
   },
 
+  setSteps: (steps: Step[]) => {
+    set({ steps });
+  },
+
   setFrame: (frame: string) => {
     set({ currentFrame: frame });
   },
@@ -124,6 +133,10 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
 
   setError: (error: string | null) => {
     set({ error });
+  },
+
+  setSessionState: (state: SessionState | null) => {
+    set({ sessionState: state });
   },
 
   reset: () => {

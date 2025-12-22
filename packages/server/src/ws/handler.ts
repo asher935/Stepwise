@@ -54,10 +54,14 @@ function isClientMessage(value: unknown): value is ClientMessage {
     const action = value.action;
     const key = value.key;
     const text = value.text;
+    const code = value.code;
+    const keyCode = value.keyCode;
     const modifiers = value.modifiers;
     if (action !== 'down' && action !== 'up' && action !== 'press') return false;
     if (typeof key !== 'string') return false;
     if (text !== undefined && typeof text !== 'string') return false;
+    if (code !== undefined && typeof code !== 'string') return false;
+    if (keyCode !== undefined && typeof keyCode !== 'number') return false;
     if (modifiers !== undefined && !isModifiers(modifiers)) return false;
     return true;
   }
@@ -178,6 +182,7 @@ export async function handleOpen(ws: ServerWebSocket<WSConnection>): Promise<voi
   // If session is active, set up CDP bridge and recorder
   if (session.status === 'active' && session.cdp && session.page) {
     await setupBridgeAndRecorder(ws, session, state);
+    await ensureInitialNavigationStep(session, state.recorder);
   }
   
   // Send initial session state
@@ -243,6 +248,23 @@ async function setupBridgeAndRecorder(
   
   state.bridge = bridge;
   state.recorder = recorder;
+}
+
+async function ensureInitialNavigationStep(
+  session: ServerSession,
+  recorder: Recorder | null
+): Promise<void> {
+  if (
+    !recorder ||
+    !session.startUrl ||
+    session.steps.length > 0 ||
+    session.initialNavigationRecorded
+  ) {
+    return;
+  }
+
+  session.initialNavigationRecorded = true;
+  await recorder.recordNavigation('about:blank', session.startUrl);
 }
 
 /**
@@ -400,7 +422,6 @@ async function handleMouseInput(
         break;
         
       case 'click':
-        await state.bridge.click(x, y, btn);
         // Record click action
         await state.recorder.recordClick(x, y, btn);
         break;
@@ -425,12 +446,14 @@ async function handleKeyboardInput(
     action: string; 
     key: string; 
     text?: string;
+    code?: string;
+    keyCode?: number;
     modifiers?: { ctrl?: boolean; alt?: boolean; shift?: boolean; meta?: boolean };
   }
 ): Promise<void> {
   if (!state.bridge || !state.recorder) return;
   
-  const { action, key, text, modifiers } = message;
+  const { action, key, text, modifiers, code, keyCode } = message;
   
   // Rate limit check
   if (!checkRateLimit(state.rateLimit)) {
@@ -456,16 +479,16 @@ async function handleKeyboardInput(
   
   try {
     if (action === 'down') {
-      await state.bridge.sendKeyboardInput('down', key, text, modifiers);
+      await state.bridge.sendKeyboardInput('down', key, text, modifiers, code, keyCode);
       // Record typing
       if (text) {
         await state.recorder.recordKeyInput(key, text);
       }
     } else if (action === 'up') {
-      await state.bridge.sendKeyboardInput('up', key, undefined, modifiers);
+      await state.bridge.sendKeyboardInput('up', key, undefined, modifiers, code, keyCode);
     } else if (action === 'press') {
-      await state.bridge.sendKeyboardInput('down', key, text, modifiers);
-      await state.bridge.sendKeyboardInput('up', key, undefined, modifiers);
+      await state.bridge.sendKeyboardInput('down', key, text, modifiers, code, keyCode);
+      await state.bridge.sendKeyboardInput('up', key, undefined, modifiers, code, keyCode);
       if (text) {
         await state.recorder.recordKeyInput(key, text);
       }
@@ -629,6 +652,7 @@ export async function notifySessionStarted(sessionId: string): Promise<void> {
   for (const [ws, state] of connections) {
     if (ws.data.sessionId === sessionId && !state.bridge) {
       await setupBridgeAndRecorder(ws, session, state);
+      await ensureInitialNavigationStep(session, state.recorder);
     }
   }
 }

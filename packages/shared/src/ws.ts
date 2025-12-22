@@ -22,6 +22,8 @@ export interface KeyboardInputMessage {
   type: 'input:keyboard';
   action: 'down' | 'up' | 'press';
   key: string;
+  code?: string;
+  keyCode?: number;
   text?: string;
   modifiers?: {
     ctrl?: boolean;

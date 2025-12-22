@@ -16,8 +16,10 @@ console.log(`[Server] Starting Stepwise server...`);
 console.log(`[Server] Environment: ${env.NODE_ENV}`);
 console.log(`[Server] Max sessions: ${env.MAX_SESSIONS}`);
 
-const clientDistPath = '../client/dist';
-console.log(`[Server] Static files path: ${clientDistPath}`);
+const clientDistPath = join(import.meta.dir, '..', '..', 'client', 'dist');
+if (env.NODE_ENV === 'production') {
+  console.log(`[Server] Static files path: ${clientDistPath}`);
+}
 
 const app = new Elysia()
   .use(cors({
@@ -54,28 +56,30 @@ const app = new Elysia()
       const raw = (ws as { raw?: ServerWebSocket<WSConnection> }).raw ?? (ws as unknown as ServerWebSocket<WSConnection>);
       handleClose(raw);
     },
-  })
-
-  .get('/assets/*', ({ params }) => {
-    const assetPath = params['*'];
-    return file(join(clientDistPath, 'assets', assetPath));
-  })
-
-  .get('/*', () => file(join(clientDistPath, 'index.html')))
-  
-  .onError(({ error, code }) => {
-    console.error(`[Server] Error (${code}):`, error);
-    const message = 'message' in error ? error.message : 'An internal error occurred';
-    return {
-      success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: env.NODE_ENV === 'development' 
-          ? message
-          : 'An internal error occurred',
-      },
-    };
   });
+
+if (env.NODE_ENV === 'production') {
+  app
+    .get('/assets/*', ({ params }) => {
+      const assetPath = params['*'];
+      return file(join(clientDistPath, 'assets', assetPath));
+    })
+    .get('/*', () => file(join(clientDistPath, 'index.html')));
+}
+
+app.onError(({ error, code }) => {
+  console.error(`[Server] Error (${code}):`, error);
+  const message = 'message' in error ? error.message : 'An internal error occurred';
+  return {
+    success: false,
+    error: {
+      code: 'INTERNAL_ERROR',
+      message: env.NODE_ENV === 'development' 
+        ? message
+        : 'An internal error occurred',
+    },
+  };
+});
 
 sessionManager.on('session:started', (sessionId) => {
   notifySessionStarted(sessionId);

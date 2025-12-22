@@ -8,6 +8,7 @@ interface ElementInfo {
   ariaLabel?: string;
   role?: string;
   text?: string;
+  labelText?: string;
   name?: string;
   placeholder?: string;
   boundingBox: { x: number; y: number; width: number; height: number };
@@ -86,12 +87,13 @@ export function createHighlight(info: ElementInfo): StepHighlight {
     selector: generateSelector(info),
     boundingBox: info.boundingBox,
     elementTag: info.tagName.toLowerCase(),
-    elementText: truncateText(info.text),
+    elementText: truncateText(info.labelText ?? info.text),
   };
 }
 
 export function inferFieldName(info: ElementInfo): string {
   const candidates = [
+    info.labelText,
     info.ariaLabel,
     info.placeholder,
     info.name,

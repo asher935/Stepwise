@@ -7,6 +7,113 @@ type FrameHandler = (data: string, timestamp: number) => void;
 type NavigationHandler = (url: string, title: string) => void;
 type ErrorHandler = (error: CDPError) => void;
 
+type ResolvedKeyInfo = {
+  code?: string;
+  keyCode?: number;
+};
+
+const keyCodeMap: Record<string, number> = {
+  Backspace: 8,
+  Tab: 9,
+  Enter: 13,
+  Shift: 16,
+  Control: 17,
+  Alt: 18,
+  Pause: 19,
+  CapsLock: 20,
+  Escape: 27,
+  Esc: 27,
+  Space: 32,
+  ' ': 32,
+  PageUp: 33,
+  PageDown: 34,
+  End: 35,
+  Home: 36,
+  ArrowLeft: 37,
+  ArrowUp: 38,
+  ArrowRight: 39,
+  ArrowDown: 40,
+  Insert: 45,
+  Delete: 46,
+  Del: 46,
+  Meta: 91,
+  ContextMenu: 93,
+};
+
+const codeMap: Record<string, string> = {
+  Backspace: 'Backspace',
+  Tab: 'Tab',
+  Enter: 'Enter',
+  Shift: 'ShiftLeft',
+  Control: 'ControlLeft',
+  Alt: 'AltLeft',
+  Pause: 'Pause',
+  CapsLock: 'CapsLock',
+  Escape: 'Escape',
+  Esc: 'Escape',
+  Space: 'Space',
+  ' ': 'Space',
+  PageUp: 'PageUp',
+  PageDown: 'PageDown',
+  End: 'End',
+  Home: 'Home',
+  ArrowLeft: 'ArrowLeft',
+  ArrowUp: 'ArrowUp',
+  ArrowRight: 'ArrowRight',
+  ArrowDown: 'ArrowDown',
+  Insert: 'Insert',
+  Delete: 'Delete',
+  Del: 'Delete',
+  Meta: 'MetaLeft',
+  ContextMenu: 'ContextMenu',
+};
+
+const functionKeyMatch = /^F([1-9]|1[0-9]|2[0-4])$/;
+
+function resolveKeyInfo(key: string, code?: string, keyCode?: number): ResolvedKeyInfo {
+  let resolvedCode = code;
+  let resolvedKeyCode = keyCode;
+
+  if (resolvedKeyCode === undefined || Number.isNaN(resolvedKeyCode)) {
+    const mapped = keyCodeMap[key];
+    if (mapped !== undefined) {
+      resolvedKeyCode = mapped;
+    } else if (functionKeyMatch.test(key)) {
+      const match = functionKeyMatch.exec(key);
+      const index = match ? Number(match[1]) : 0;
+      if (index > 0) {
+        resolvedKeyCode = 111 + index;
+      }
+    } else if (key.length === 1) {
+      const upper = key.toUpperCase();
+      const charCode = upper.charCodeAt(0);
+      if (!Number.isNaN(charCode)) {
+        resolvedKeyCode = charCode;
+      }
+    }
+  }
+
+  if (resolvedCode === undefined) {
+    const mappedCode = codeMap[key];
+    if (mappedCode !== undefined) {
+      resolvedCode = mappedCode;
+    } else if (functionKeyMatch.test(key)) {
+      resolvedCode = key;
+    } else if (key.length === 1) {
+      const upper = key.toUpperCase();
+      if (upper >= 'A' && upper <= 'Z') {
+        resolvedCode = `Key${upper}`;
+      } else if (upper >= '0' && upper <= '9') {
+        resolvedCode = `Digit${upper}`;
+      } else if (key === ' ') {
+        resolvedCode = 'Space';
+      }
+    }
+  }
+
+  return { code: resolvedCode, keyCode: resolvedKeyCode };
+}
+
 interface CDPError {
   code: string;
   message: string;
@@ -223,8 +330,14 @@ export class CDPBridge {
     action: 'down' | 'up',
     key: string,
     text?: string,
-    modifiers?: { ctrl?: boolean; alt?: boolean; shift?: boolean; meta?: boolean }
+    modifiers?: { ctrl?: boolean; alt?: boolean; shift?: boolean; meta?: boolean },
+    code?: string,
+    keyCode?: number
   ): Promise<void> {
+    const resolved = resolveKeyInfo(key, code, keyCode);
+    const resolvedCode = resolved.code;
+    const resolvedKeyCode = resolved.keyCode;
+
     let modifierFlags = 0;
     if (modifiers?.alt) modifierFlags |= 1;
     if (modifiers?.ctrl) modifierFlags |= 2;
@@ -239,28 +352,15 @@ export class CDPBridge {
           key,
           text: hasText ? text : undefined,
           modifiers: modifierFlags,
+          code: resolvedCode ?? undefined,
+          windowsVirtualKeyCode: resolvedKeyCode ?? undefined,
+          nativeVirtualKeyCode: resolvedKeyCode ?? undefined,
         }),
         'sendKeyboardInput-keyDown',
-        { key, text, modifiers }
+        { key, text, modifiers, code: resolvedCode, keyCode: resolvedKeyCode }
       );
       if (result === null) {
         throw new Error('CDP key down failed');
-      }
-
-      if (hasText) {
-        const charResult = await this.executeWithHealthCheck(
-          () => this.cdp.send('Input.dispatchKeyEvent', {
-            type: 'char',
-            key,
-            text,
-            modifiers: modifierFlags,
-          }),
-          'sendKeyboardInput-char',
-          { key, text, modifiers }
-        );
-        if (charResult === null) {
-          throw new Error('CDP char event failed');
-        }
       }
     } else {
       const result = await this.executeWithHealthCheck(
@@ -268,9 +368,12 @@ export class CDPBridge {
           type: 'keyUp',
           key,
           modifiers: modifierFlags,
+          code: resolvedCode ?? undefined,
+          windowsVirtualKeyCode: resolvedKeyCode ?? undefined,
+          nativeVirtualKeyCode: resolvedKeyCode ?? undefined,
         }),
         'sendKeyboardInput-keyUp',
-        { key, modifiers }
+        { key, modifiers, code: resolvedCode, keyCode: resolvedKeyCode }
       );
       if (result === null) {
         throw new Error('CDP key up failed');
@@ -339,6 +442,7 @@ export class CDPBridge {
     ariaLabel?: string;
     role?: string;
     text?: string;
+    labelText?: string;
     name?: string;
     placeholder?: string;
     boundingBox: { x: number; y: number; width: number; height: number };
@@ -348,18 +452,71 @@ export class CDPBridge {
         const element = document.elementFromPoint(px, py);
         if (!element) return null;
 
-        const rect = element.getBoundingClientRect();
-        
+        const target = element.closest('button, a, input, select, textarea, label, [role="button"], [role="link"]') ?? element;
+
+        const getLabelText = (el: Element): string | undefined => {
+          const ariaLabel = el.getAttribute('aria-label');
+          if (ariaLabel) return ariaLabel.trim();
+
+          const ariaLabelledBy = el.getAttribute('aria-labelledby');
+          if (ariaLabelledBy) {
+            const combined = ariaLabelledBy
+              .split(/\s+/)
+              .map(id => document.getElementById(id)?.textContent ?? '')
+              .join(' ')
+              .trim();
+            if (combined) return combined;
+          }
+
+          if ('labels' in el) {
+            const labels = (el as HTMLInputElement).labels;
+            const labelText = labels?.[0]?.textContent?.trim();
+            if (labelText) return labelText;
+          }
+
+          const labelAncestor = el.closest('label');
+          const labelAncestorText = labelAncestor?.textContent?.trim();
+          if (labelAncestorText) return labelAncestorText;
+
+          const placeholder = (el as HTMLInputElement).placeholder;
+          if (placeholder) return placeholder.trim();
+
+          const title = el.getAttribute('title');
+          if (title) return title.trim();
+
+          const value = (el as HTMLInputElement).value;
+          const type = (el as HTMLInputElement).type;
+          if (value && ['submit', 'button', 'reset'].includes(type)) return value.trim();
+
+          const alt = el.getAttribute('alt');
+          if (alt) return alt.trim();
+
+          const textContent = el.textContent?.trim();
+          if (textContent) return textContent;
+
+          return undefined;
+        };
+
+        const role = target.getAttribute('role') ?? undefined;
+        const tagName = role === 'button'
+          ? 'button'
+          : role === 'link'
+            ? 'a'
+            : target.tagName;
+        const rect = target.getBoundingClientRect();
+        const labelText = getLabelText(target);
+
         return {
-          tagName: element.tagName,
-          id: element.id || undefined,
-          className: element.className || undefined,
-          testId: element.getAttribute('data-testid') ?? undefined,
-          ariaLabel: element.getAttribute('aria-label') ?? undefined,
-          role: element.getAttribute('role') ?? undefined,
-          text: element.textContent?.trim().slice(0, 100) || undefined,
-          name: (element as HTMLInputElement).name || undefined,
-          placeholder: (element as HTMLInputElement).placeholder || undefined,
+          tagName,
+          id: (target as HTMLElement).id || undefined,
+          className: (target as HTMLElement).className || undefined,
+          testId: target.getAttribute('data-testid') ?? undefined,
+          ariaLabel: target.getAttribute('aria-label') ?? undefined,
+          role,
+          text: (labelText ?? target.textContent?.trim().slice(0, 100)) || undefined,
+          labelText,
+          name: (target as HTMLInputElement).name || undefined,
+          placeholder: (target as HTMLInputElement).placeholder || undefined,
           boundingBox: {
             x: rect.x,
             y: rect.y,
@@ -373,10 +530,11 @@ export class CDPBridge {
     ) ?? null;
   }
 
-  async takeScreenshot(): Promise<Buffer> {
+  async takeScreenshot(clip?: { x: number; y: number; width: number; height: number }): Promise<Buffer> {
     return await this.page.screenshot({
       type: 'jpeg',
       quality: 80,
+      clip,
     });
   }
 

@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import type { NavigateStep, Step } from '@stepwise/shared';
 import { api } from '@/lib/api';
 import { useSessionStore } from '@/stores/sessionStore';
 
@@ -21,6 +22,9 @@ interface ImportModalProps {
 
 export function ImportModal({ open, onOpenChange }: ImportModalProps) {
   const sessionId = useSessionStore((s) => s.sessionId);
+  const createSession = useSessionStore((s) => s.createSession);
+  const startSession = useSessionStore((s) => s.startSession);
+  const setSteps = useSessionStore((s) => s.setSteps);
   const [file, setFile] = useState<File | null>(null);
   const [password, setPassword] = useState('');
   const [needsPassword, setNeedsPassword] = useState(false);
@@ -28,36 +32,60 @@ export function ImportModal({ open, onOpenChange }: ImportModalProps) {
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const getStartUrl = useCallback((steps: Step[]) => {
+    const navigateSteps = steps
+      .filter((step): step is NavigateStep => step.action === 'navigate')
+      .sort((a, b) => a.index - b.index);
+    return navigateSteps[0]?.toUrl;
+  }, []);
+
+  const ensureSession = useCallback(async () => {
+    if (sessionId) return sessionId;
+    await createSession();
+    const nextSessionId = useSessionStore.getState().sessionId;
+    if (!nextSessionId) {
+      throw new Error('Failed to create session');
+    }
+    return nextSessionId;
+  }, [sessionId, createSession]);
+
   const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
-    if (!selectedFile || !sessionId) return;
+    if (!selectedFile) return;
 
     setFile(selectedFile);
     setError(null);
+    setNeedsPassword(false);
+    setPassword('');
 
     try {
-      const preview = await api.previewImport(sessionId, selectedFile);
+      const activeSessionId = await ensureSession();
+      const preview = await api.previewImport(activeSessionId, selectedFile);
       setNeedsPassword(preview.encrypted);
     } catch {
       setError('Failed to preview file');
     }
-  }, [sessionId]);
+  }, [ensureSession]);
 
   const handleImport = useCallback(async () => {
-    if (!sessionId || !file) return;
+    if (!file) return;
 
     setIsImporting(true);
     setError(null);
 
     try {
-      await api.importFile(sessionId, file, needsPassword ? password : undefined);
+      const activeSessionId = await ensureSession();
+      const result = await api.importFile(activeSessionId, file, needsPassword ? password : undefined);
+      setSteps(result.steps);
+      const startUrl = getStartUrl(result.steps);
+      await startSession(startUrl);
       onOpenChange(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Import failed');
     } finally {
       setIsImporting(false);
     }
-  }, [sessionId, file, password, needsPassword, onOpenChange]);
+  }, [file, password, needsPassword, onOpenChange, ensureSession, getStartUrl, startSession, setSteps]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();

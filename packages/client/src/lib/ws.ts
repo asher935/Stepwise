@@ -158,12 +158,23 @@ class WebSocketClient {
     this.send({ type: 'input:mouse', action: 'up', x, y, button });
   }
 
-  sendKeyDown(key: string, text?: string, modifiers?: { ctrl?: boolean; alt?: boolean; shift?: boolean; meta?: boolean }): void {
-    this.send({ type: 'input:keyboard', action: 'down', key, text, modifiers });
+  sendKeyDown(
+    key: string,
+    text?: string,
+    modifiers?: { ctrl?: boolean; alt?: boolean; shift?: boolean; meta?: boolean },
+    code?: string,
+    keyCode?: number
+  ): void {
+    this.send({ type: 'input:keyboard', action: 'down', key, text, modifiers, code, keyCode });
   }
 
-  sendKeyUp(key: string, modifiers?: { ctrl?: boolean; alt?: boolean; shift?: boolean; meta?: boolean }): void {
-    this.send({ type: 'input:keyboard', action: 'up', key, modifiers });
+  sendKeyUp(
+    key: string,
+    modifiers?: { ctrl?: boolean; alt?: boolean; shift?: boolean; meta?: boolean },
+    code?: string,
+    keyCode?: number
+  ): void {
+    this.send({ type: 'input:keyboard', action: 'up', key, modifiers, code, keyCode });
   }
 
   sendScroll(x: number, y: number, deltaX: number, deltaY: number): void {

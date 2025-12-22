@@ -30,11 +30,31 @@ cd stepwise
 
 # Start with Docker Compose
 cd docker
-docker-compose up -d
+docker compose up -d
+
+# If you make code changes, rebuild the image
+docker compose up -d --build
+
+# If you suspect a cached build, force a clean rebuild
+docker compose build --no-cache
+docker compose up -d
 
 # Open in browser
 open http://localhost:3000
 ```
+
+### Docker Development (Live Reload)
+
+```bash
+# From repo root
+docker compose -f docker/docker-compose.dev.yml up --build
+
+# Or from docker/ directory
+cd docker
+docker compose -f docker-compose.dev.yml up --build
+```
+
+This uses bind mounts and runs `bun run dev` inside the container, so changes hot-reload without rebuilding the image. Rebuild only if `docker/Dockerfile.dev` changes.
 
 ### Local Development
 

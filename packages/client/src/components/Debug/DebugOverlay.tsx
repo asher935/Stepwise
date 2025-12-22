@@ -25,8 +25,11 @@ function describeClientMessage(message: ClientMessage): string {
       return `navigate:${message.action}${message.url ? ` ${message.url}` : ''}`;
     case 'ping':
       return 'ping';
-    default:
-      return message.type;
+    default: {
+      // Handle unknown message types
+      const _exhaustiveCheck: never = message;
+      return `unknown:${(message as any).type}`;
+    }
   }
 }
 
@@ -54,8 +57,11 @@ function describeServerMessage(message: ServerMessage): string {
       return 'session:unhealthy';
     case 'error':
       return `error ${message.code}`;
-    default:
-      return message.type;
+    default: {
+      // Handle unknown message types
+      const _exhaustiveCheck: never = message;
+      return `unknown:${(message as any).type}`;
+    }
   }
 }
 
@@ -63,6 +69,7 @@ export function DebugOverlay() {
   const isConnected = useSessionStore((s) => s.isConnected);
   const sessionState = useSessionStore((s) => s.sessionState);
   const error = useSessionStore((s) => s.error);
+  const [isMinimized, setIsMinimized] = useState(false);
   const [lastSent, setLastSent] = useState<MessageInfo | null>(null);
   const [lastReceived, setLastReceived] = useState<MessageInfo | null>(null);
   const [lastReceivedEvent, setLastReceivedEvent] = useState<MessageInfo | null>(null);
@@ -115,71 +122,82 @@ export function DebugOverlay() {
 
   return (
     <div className="fixed bottom-3 right-3 z-50 w-[360px] rounded-md border bg-background/95 shadow-lg backdrop-blur">
-      <div className="px-3 py-2 border-b text-xs font-semibold">Debug Overlay</div>
-      <div className="px-3 py-2 text-xs space-y-1">
-        <div className="flex justify-between">
-          <span>WS</span>
-          <span>{status}</span>
-        </div>
-        <div className="flex justify-between">
-          <span>WS URL</span>
-          <span className="truncate max-w-[200px]" title={wsClient.url ?? '—'}>{wsClient.url ?? '—'}</span>
-        </div>
-        <div className="flex justify-between">
-          <span>Session</span>
-          <span>{sessionState?.status ?? '—'}</span>
-        </div>
-        <div className="flex justify-between">
-          <span>Connected At</span>
-          <span>{formatTime(connectedAt)}</span>
-        </div>
-        <div className="flex justify-between">
-          <span>Disconnected At</span>
-          <span>{formatTime(disconnectedAt)}</span>
-        </div>
-        <div className="flex justify-between">
-          <span>Last Sent</span>
-          <span className="truncate max-w-[200px]" title={lastSent?.summary ?? '—'}>
-            {lastSent ? `${lastSent.summary} • ${formatTime(lastSent.at)}` : '—'}
-          </span>
-        </div>
-        <div className="flex justify-between">
-          <span>Last Received</span>
-          <span className="truncate max-w-[200px]" title={lastReceived?.summary ?? '—'}>
-            {lastReceived ? `${lastReceived.summary} • ${formatTime(lastReceived.at)}` : '—'}
-          </span>
-        </div>
-        <div className="flex justify-between">
-          <span>Last Event</span>
-          <span className="truncate max-w-[200px]" title={lastReceivedEvent?.summary ?? '—'}>
-            {lastReceivedEvent ? `${lastReceivedEvent.summary} • ${formatTime(lastReceivedEvent.at)}` : '—'}
-          </span>
-        </div>
-        <div className="flex justify-between">
-          <span>Last Pong</span>
-          <span>{formatTime(lastPongAt)}</span>
-        </div>
-        <div className="flex justify-between">
-          <span>Last Error</span>
-          <span className="truncate max-w-[200px]" title={lastError?.summary ?? '—'}>
-            {lastError ? `${lastError.summary} • ${formatTime(lastError.at)}` : '—'}
-          </span>
-        </div>
-        <div className="flex justify-between">
-          <span>Error</span>
-          <span className="truncate max-w-[200px]" title={error ?? '—'}>{error ?? '—'}</span>
-        </div>
-        <div className="pt-1">
-          <button
-            type="button"
-            className="w-full rounded-sm border px-2 py-1 text-xs hover:bg-muted"
-            onClick={() => wsClient.send({ type: 'ping', timestamp: Date.now() })}
-            disabled={!isConnected}
-          >
-            Send Ping
-          </button>
-        </div>
+      <div className="px-3 py-2 border-b text-xs font-semibold flex items-center justify-between">
+        <span>Debug Overlay</span>
+        <button
+          type="button"
+          className="rounded-sm border px-2 py-0.5 text-[10px] uppercase tracking-wide hover:bg-muted"
+          onClick={() => setIsMinimized((value) => !value)}
+        >
+          {isMinimized ? 'Expand' : 'Minimize'}
+        </button>
       </div>
+      {!isMinimized && (
+        <div className="px-3 py-2 text-xs space-y-1">
+          <div className="flex justify-between">
+            <span>WS</span>
+            <span>{status}</span>
+          </div>
+          <div className="flex justify-between">
+            <span>WS URL</span>
+            <span className="truncate max-w-[200px]" title={wsClient.url ?? '—'}>{wsClient.url ?? '—'}</span>
+          </div>
+          <div className="flex justify-between">
+            <span>Session</span>
+            <span>{sessionState?.status ?? '—'}</span>
+          </div>
+          <div className="flex justify-between">
+            <span>Connected At</span>
+            <span>{formatTime(connectedAt)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span>Disconnected At</span>
+            <span>{formatTime(disconnectedAt)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span>Last Sent</span>
+            <span className="truncate max-w-[200px]" title={lastSent?.summary ?? '—'}>
+              {lastSent ? `${lastSent.summary} • ${formatTime(lastSent.at)}` : '—'}
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span>Last Received</span>
+            <span className="truncate max-w-[200px]" title={lastReceived?.summary ?? '—'}>
+              {lastReceived ? `${lastReceived.summary} • ${formatTime(lastReceived.at)}` : '—'}
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span>Last Event</span>
+            <span className="truncate max-w-[200px]" title={lastReceivedEvent?.summary ?? '—'}>
+              {lastReceivedEvent ? `${lastReceivedEvent.summary} • ${formatTime(lastReceivedEvent.at)}` : '—'}
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span>Last Pong</span>
+            <span>{formatTime(lastPongAt)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span>Last Error</span>
+            <span className="truncate max-w-[200px]" title={lastError?.summary ?? '—'}>
+              {lastError ? `${lastError.summary} • ${formatTime(lastError.at)}` : '—'}
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span>Error</span>
+            <span className="truncate max-w-[200px]" title={error ?? '—'}>{error ?? '—'}</span>
+          </div>
+          <div className="pt-1">
+            <button
+              type="button"
+              className="w-full rounded-sm border px-2 py-1 text-xs hover:bg-muted"
+              onClick={() => wsClient.send({ type: 'ping', timestamp: Date.now() })}
+              disabled={!isConnected}
+            >
+              Send Ping
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

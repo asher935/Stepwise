@@ -125,7 +125,7 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
       }
       
       await sessionManager.endSession(params.sessionId, 'user');
-      return { success: true };
+      return { success: true, data: true };
     },
     {
       params: t.Object({
@@ -267,7 +267,7 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
         session.steps[i]!.index = i;
       }
       
-      return { success: true };
+      return { success: true, data: true };
     },
     {
       params: t.Object({

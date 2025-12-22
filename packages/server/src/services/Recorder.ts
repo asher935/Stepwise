@@ -88,28 +88,96 @@ export class Recorder {
   /**
    * Captures current screenshot with optional delay for page settling
    */
-  private async captureScreenshot(delay: number = 100): Promise<Buffer> {
+  private async captureScreenshot(
+    delay: number = 100,
+    clip?: { x: number; y: number; width: number; height: number }
+  ): Promise<Buffer> {
     // Wait for page to settle
     if (delay > 0) {
       await new Promise(resolve => setTimeout(resolve, delay));
     }
     
-    return await this.cdpBridge.takeScreenshot();
+    return await this.cdpBridge.takeScreenshot(clip);
   }
 
   /**
    * Creates a base step
    */
-  private createBaseStep(screenshotPath: string): Omit<Step, 'action'> {
+  private createBaseStep(screenshotPath: string, screenshotDataUrl: string): Omit<Step, 'action'> {
     const index = this.session.steps.length;
     return {
       id: nanoid(),
       index,
       timestamp: Date.now(),
       screenshotPath,
+      screenshotDataUrl,
       caption: '',
       isEdited: false,
     };
+  }
+
+  private toScreenshotDataUrl(buffer: Buffer): string {
+    return `data:image/jpeg;base64,${buffer.toString('base64')}`;
+  }
+
+  private async getViewportSize(): Promise<{ width: number; height: number } | null> {
+    const page = this.session.page;
+    if (!page) return null;
+    const viewport = page.viewportSize();
+    if (viewport) return viewport;
+    try {
+      return await page.evaluate(() => ({
+        width: window.innerWidth,
+        height: window.innerHeight,
+      }));
+    } catch {
+      return null;
+    }
+  }
+
+  private async getClipForTarget(
+    boundingBox: { x: number; y: number; width: number; height: number } | null,
+    point?: { x: number; y: number }
+  ): Promise<{ x: number; y: number; width: number; height: number } | null> {
+    const viewport = await this.getViewportSize();
+    if (!viewport) return null;
+
+    const baseBox = boundingBox && boundingBox.width > 0 && boundingBox.height > 0
+      ? boundingBox
+      : point
+        ? { x: point.x - 60, y: point.y - 60, width: 120, height: 120 }
+        : null;
+
+    if (!baseBox) return null;
+
+    const padding = 40;
+    const minSize = 160;
+
+    let x = baseBox.x - padding;
+    let y = baseBox.y - padding;
+    let width = baseBox.width + padding * 2;
+    let height = baseBox.height + padding * 2;
+
+    if (width < minSize) {
+      const extra = (minSize - width) / 2;
+      x -= extra;
+      width = minSize;
+    }
+
+    if (height < minSize) {
+      const extra = (minSize - height) / 2;
+      y -= extra;
+      height = minSize;
+    }
+
+    x = Math.max(0, Math.min(x, viewport.width - 1));
+    y = Math.max(0, Math.min(y, viewport.height - 1));
+    width = Math.min(width, viewport.width - x);
+    height = Math.min(height, viewport.height - y);
+
+    if (width <= 1 || height <= 1) return null;
+
+    return { x, y, width, height };
   }
 
   /**
@@ -128,9 +196,13 @@ export class Recorder {
     // Get element info at click point
     const elementInfo = await this.cdpBridge.getElementAtPoint(x, y);
     
-    // Capture screenshot
-    const screenshotData = await this.captureScreenshot(200);
+    const clip = await this.getClipForTarget(
+      elementInfo?.boundingBox ?? null,
+      { x, y }
+    );
+    const screenshotData = await this.captureScreenshot(200, clip ?? undefined);
     const screenshotPath = await this.saveScreenshot(screenshotData);
+    const screenshotDataUrl = this.toScreenshotDataUrl(screenshotData);
 
     // Create highlight
     const target: StepHighlight = elementInfo
@@ -146,7 +218,7 @@ export class Recorder {
     const caption = this.generateClickCaption(target, button);
 
     const step: ClickStep = {
-      ...this.createBaseStep(screenshotPath),
+      ...this.createBaseStep(screenshotPath, screenshotDataUrl),
       action: 'click',
       target,
       button,
@@ -188,12 +260,15 @@ export class Recorder {
         ? inferFieldName(focusedElement)
         : 'field';
 
-      // Capture screenshot
-      const screenshotData = await this.captureScreenshot(0);
+      const clip = await this.getClipForTarget(
+        focusedElement?.boundingBox ?? null
+      );
+      const screenshotData = await this.captureScreenshot(0, clip ?? undefined);
       const screenshotPath = await this.saveScreenshot(screenshotData);
+      const screenshotDataUrl = this.toScreenshotDataUrl(screenshotData);
 
       this.pendingTypeStep = {
-        ...this.createBaseStep(screenshotPath),
+        ...this.createBaseStep(screenshotPath, screenshotDataUrl),
         action: 'type',
         target,
         fieldName,
@@ -239,9 +314,10 @@ export class Recorder {
     // Capture screenshot after navigation settles
     const screenshotData = await this.captureScreenshot(500);
     const screenshotPath = await this.saveScreenshot(screenshotData);
+    const screenshotDataUrl = this.toScreenshotDataUrl(screenshotData);
 
     const step: NavigateStep = {
-      ...this.createBaseStep(screenshotPath),
+      ...this.createBaseStep(screenshotPath, screenshotDataUrl),
       action: 'navigate',
       fromUrl,
       toUrl,
@@ -281,9 +357,10 @@ export class Recorder {
 
       const screenshotData = await this.captureScreenshot(100);
       const screenshotPath = await this.saveScreenshot(screenshotData);
+      const screenshotDataUrl = this.toScreenshotDataUrl(screenshotData);
 
       const step: ScrollStep = {
-        ...this.createBaseStep(screenshotPath),
+        ...this.createBaseStep(screenshotPath, screenshotDataUrl),
         action: 'scroll',
         direction,
         distance,
@@ -353,6 +430,7 @@ export class Recorder {
     ariaLabel?: string;
     name?: string;
     placeholder?: string;
+    labelText?: string;
     boundingBox: { x: number; y: number; width: number; height: number };
   } | null> {
     try {
@@ -363,7 +441,51 @@ export class Recorder {
         const element = document.activeElement;
         if (!element || element === document.body) return null;
 
+        const getLabelText = (el: Element): string | undefined => {
+          const ariaLabel = el.getAttribute('aria-label');
+          if (ariaLabel) return ariaLabel.trim();
+
+          const ariaLabelledBy = el.getAttribute('aria-labelledby');
+          if (ariaLabelledBy) {
+            const combined = ariaLabelledBy
+              .split(/\s+/)
+              .map(id => document.getElementById(id)?.textContent ?? '')
+              .join(' ')
+              .trim();
+            if (combined) return combined;
+          }
+
+          if ('labels' in el) {
+            const labels = (el as HTMLInputElement).labels;
+            const labelText = labels?.[0]?.textContent?.trim();
+            if (labelText) return labelText;
+          }
+
+          const labelAncestor = el.closest('label');
+          const labelAncestorText = labelAncestor?.textContent?.trim();
+          if (labelAncestorText) return labelAncestorText;
+
+          const placeholder = (el as HTMLInputElement).placeholder;
+          if (placeholder) return placeholder.trim();
+
+          const title = el.getAttribute('title');
+          if (title) return title.trim();
+
+          const value = (el as HTMLInputElement).value;
+          const type = (el as HTMLInputElement).type;
+          if (value && ['submit', 'button', 'reset'].includes(type)) return value.trim();
+
+          const alt = el.getAttribute('alt');
+          if (alt) return alt.trim();
+
+          const textContent = el.textContent?.trim();
+          if (textContent) return textContent;
+
+          return undefined;
+        };
+
         const rect = element.getBoundingClientRect();
+        const labelText = getLabelText(element);
         
         return {
           tagName: element.tagName,
@@ -373,6 +495,7 @@ export class Recorder {
           ariaLabel: element.getAttribute('aria-label') ?? undefined,
           name: (element as HTMLInputElement).name || undefined,
           placeholder: (element as HTMLInputElement).placeholder || undefined,
+          labelText,
           boundingBox: {
             x: rect.x,
             y: rect.y,
@@ -393,7 +516,17 @@ export class Recorder {
     const action = button === 'right' ? 'Right-click' : 'Click';
     
     if (target.elementText) {
-      return `${action} "${truncateText(target.elementText, 30)}"`;
+      const label = truncateText(target.elementText, 30);
+      if (target.elementTag === 'button') {
+        return `${action} "${label}" button`;
+      }
+      if (target.elementTag === 'a') {
+        return `${action} "${label}" link`;
+      }
+      if (target.elementTag === 'input' || target.elementTag === 'textarea' || target.elementTag === 'select') {
+        return `${action} "${label}" field`;
+      }
+      return `${action} "${label}"`;
     }
     
     if (target.elementTag === 'button') {

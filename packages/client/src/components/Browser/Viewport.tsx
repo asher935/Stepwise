@@ -79,22 +79,33 @@ export function Viewport() {
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     e.preventDefault();
-    wsClient.sendKeyDown(e.key, e.key.length === 1 ? e.key : undefined, {
-      ctrl: e.ctrlKey,
-      alt: e.altKey,
-      shift: e.shiftKey,
-      meta: e.metaKey,
-    });
+    wsClient.sendKeyDown(
+      e.key,
+      e.key.length === 1 ? e.key : undefined,
+      {
+        ctrl: e.ctrlKey,
+        alt: e.altKey,
+        shift: e.shiftKey,
+        meta: e.metaKey,
+      },
+      e.code,
+      e.keyCode
+    );
   }, []);
 
   const handleKeyUp = useCallback((e: React.KeyboardEvent) => {
     e.preventDefault();
-    wsClient.sendKeyUp(e.key, {
-      ctrl: e.ctrlKey,
-      alt: e.altKey,
-      shift: e.shiftKey,
-      meta: e.metaKey,
-    });
+    wsClient.sendKeyUp(
+      e.key,
+      {
+        ctrl: e.ctrlKey,
+        alt: e.altKey,
+        shift: e.shiftKey,
+        meta: e.metaKey,
+      },
+      e.code,
+      e.keyCode
+    );
   }, []);
 
   if (!isConnected || !currentFrame) {

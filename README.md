@@ -44,7 +44,7 @@ Run directly on your machine with hot-reload for rapid development.
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/stepwise.git
+git clone https://github.com/asher935/stepwise.git
 cd stepwise
 
 # Install dependencies
@@ -74,7 +74,7 @@ Run inside Docker with hot-reload enabled. Ideal for testing containerized behav
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/stepwise.git
+git clone https://github.com/asher935/stepwise.git
 cd stepwise
 
 # Start development container with live reload
@@ -111,7 +111,7 @@ Run the production-optimized Docker image with pre-built assets.
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/stepwise.git
+git clone https://github.com/asher935/stepwise.git
 cd stepwise
 
 # Build and start production container

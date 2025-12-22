@@ -89,12 +89,13 @@ export class Recorder {
    * Saves a screenshot to disk
    */
   private async saveScreenshot(screenshotData: Buffer): Promise<string> {
-    const filename = `${nanoid()}.jpg`;
+    const extension = env.SCREENSHOT_FORMAT === 'png' ? 'png' : 'jpg';
+    const filename = `${nanoid()}.${extension}`;
     const sessionDir = join(env.TEMP_DIR, 'sessions', this.session.id, 'screenshots');
     const filepath = join(sessionDir, filename);
-    
+
     await writeFile(filepath, screenshotData as any);
-    
+
     return filepath;
   }
 
@@ -103,13 +104,19 @@ export class Recorder {
    */
   private async captureScreenshot(
     delay: number = 100,
-    clip?: { x: number; y: number; width: number; height: number }
+    clip?: { x: number; y: number; width: number; height: number },
+    highlightBoundingBox?: { x: number; y: number; width: number; height: number }
   ): Promise<Buffer> {
     // Wait for page to settle
     if (delay > 0) {
       await new Promise(resolve => setTimeout(resolve, delay));
     }
-    
+
+    // Use highlighted screenshot if bounding box is provided
+    if (highlightBoundingBox) {
+      return await this.cdpBridge.takeScreenshotWithHighlight(highlightBoundingBox, clip);
+    }
+
     return await this.cdpBridge.takeScreenshot(clip);
   }
 
@@ -130,7 +137,8 @@ export class Recorder {
   }
 
   private toScreenshotDataUrl(buffer: Buffer): string {
-    return `data:image/jpeg;base64,${buffer.toString('base64')}`;
+    const mimeType = env.SCREENSHOT_FORMAT === 'png' ? 'image/png' : 'image/jpeg';
+    return `data:${mimeType};base64,${buffer.toString('base64')}`;
   }
 
   private async getViewportSize(): Promise<{ width: number; height: number } | null> {
@@ -228,8 +236,14 @@ export class Recorder {
       { x, y }
     );
 
-    // Capture screenshot immediately (before any mouse events are sent)
-    const screenshotData = await this.captureScreenshot(0, clip ?? undefined);
+    // Capture screenshot with highlight if element has bounding box
+    const screenshotData = await this.captureScreenshot(
+      0,
+      clip ?? undefined,
+      elementInfo?.boundingBox && elementInfo.boundingBox.width > 0 && elementInfo.boundingBox.height > 0
+        ? elementInfo.boundingBox
+        : undefined
+    );
     const screenshotPath = await this.saveScreenshot(screenshotData);
     const screenshotDataUrl = this.toScreenshotDataUrl(screenshotData);
 
@@ -288,7 +302,15 @@ export class Recorder {
         elementInfo?.boundingBox ?? null,
         { x, y }
       );
-      screenshotData = await this.captureScreenshot(0, clip ?? undefined);
+
+      // Capture screenshot with highlight if element has bounding box
+      screenshotData = await this.captureScreenshot(
+        0,
+        clip ?? undefined,
+        elementInfo?.boundingBox && elementInfo.boundingBox.width > 0 && elementInfo.boundingBox.height > 0
+          ? elementInfo.boundingBox
+          : undefined
+      );
       screenshotPath = await this.saveScreenshot(screenshotData);
       screenshotDataUrl = this.toScreenshotDataUrl(screenshotData);
     }
@@ -337,7 +359,7 @@ export class Recorder {
       await this.flushPendingScrollStep();
       // Get focused element
       const focusedElement = await this.getFocusedElementInfo();
-      
+
       const target: StepHighlight = focusedElement
         ? createHighlight(focusedElement)
         : {
@@ -354,7 +376,15 @@ export class Recorder {
       const clip = await this.getClipForTarget(
         focusedElement?.boundingBox ?? null
       );
-      const screenshotData = await this.captureScreenshot(0, clip ?? undefined);
+
+      // Capture screenshot with highlight if element has bounding box
+      const screenshotData = await this.captureScreenshot(
+        0,
+        clip ?? undefined,
+        focusedElement?.boundingBox && focusedElement.boundingBox.width > 0 && focusedElement.boundingBox.height > 0
+          ? focusedElement.boundingBox
+          : undefined
+      );
       const screenshotPath = await this.saveScreenshot(screenshotData);
       const screenshotDataUrl = this.toScreenshotDataUrl(screenshotData);
 

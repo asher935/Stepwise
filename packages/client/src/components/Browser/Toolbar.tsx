@@ -1,16 +1,20 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 
-import { ArrowLeft, ArrowRight, Globe, RotateCw } from 'lucide-react';
+import { ArrowLeft, ArrowRight, RotateCw, ShieldCheck } from 'lucide-react';
 
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { wsClient } from '@/lib/ws';
 import { useSessionStore } from '@/stores/sessionStore';
+;
 
 export function Toolbar() {
   const sessionState = useSessionStore((s) => s.sessionState);
   const isConnected = useSessionStore((s) => s.isConnected);
   const [urlInput, setUrlInput] = useState(sessionState?.url ?? '');
+  const [isNavigating, setIsNavigating] = useState(false);
+
+  useEffect(() => {
+    setUrlInput(sessionState?.url ?? '');
+  }, [sessionState?.url]);
 
   const handleNavigate = useCallback(() => {
     if (urlInput.trim()) {
@@ -18,7 +22,9 @@ export function Toolbar() {
       if (!url.startsWith('http://') && !url.startsWith('https://')) {
         url = `https://${url}`;
       }
+      setIsNavigating(true);
       wsClient.navigate(url);
+      setTimeout(() => setIsNavigating(false), 1200);
     }
   }, [urlInput]);
 
@@ -29,69 +35,68 @@ export function Toolbar() {
   }, [handleNavigate]);
 
   const handleBack = useCallback(() => {
+    setIsNavigating(true);
     wsClient.goBack();
+    setTimeout(() => setIsNavigating(false), 1200);
   }, []);
 
   const handleForward = useCallback(() => {
+    setIsNavigating(true);
     wsClient.goForward();
+    setTimeout(() => setIsNavigating(false), 1200);
   }, []);
 
   const handleReload = useCallback(() => {
+    setIsNavigating(true);
     wsClient.reload();
+    setTimeout(() => setIsNavigating(false), 1200);
   }, []);
 
   return (
-    <div className="flex items-center gap-2 p-2 border-b bg-background">
-      <div className="flex items-center gap-1">
-        <Button
-          variant="ghost"
-          size="icon"
+    <div className="h-16 bg-[#FDF2E9]/60 backdrop-blur-md border-b border-black/5 flex items-center px-6 space-x-6">
+
+      {/* Navigation Buttons */}
+      <div className="flex items-center space-x-1">
+        <button
           onClick={handleBack}
           disabled={!isConnected}
-          aria-label="Go back"
+          className="w-8 h-8 flex items-center justify-center text-[#BBAFA7] hover:text-[#2D241E] transition-all rounded-full hover:bg-white/80 disabled:opacity-50"
         >
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
+          <ArrowLeft size={18} />
+        </button>
+        <button
           onClick={handleForward}
           disabled={!isConnected}
-          aria-label="Go forward"
+          className="w-8 h-8 flex items-center justify-center text-[#BBAFA7] hover:text-[#2D241E] transition-all rounded-full hover:bg-white/80 disabled:opacity-50"
         >
-          <ArrowRight className="h-4 w-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
+          <ArrowRight size={18} />
+        </button>
+        <button
           onClick={handleReload}
           disabled={!isConnected}
-          aria-label="Reload page"
+          className={`w-8 h-8 flex items-center justify-center text-[#BBAFA7] hover:text-[#2D241E] transition-all rounded-full hover:bg-white/80 disabled:opacity-50 ${isNavigating ? 'animate-spin' : ''}`}
         >
-          <RotateCw className="h-4 w-4" />
-        </Button>
+          <RotateCw size={16} />
+        </button>
       </div>
 
-      <div className="flex-1 flex items-center gap-2">
-        <div className="relative flex-1">
-          <Globe className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            value={urlInput}
-            onChange={(e) => setUrlInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Enter URL..."
-            className="pl-9"
-            disabled={!isConnected}
-          />
+      {/* URL Input */}
+      <div className="flex-1 relative group">
+        <div className="absolute left-4 top-1/2 -translate-y-1/2 text-[#E67E22]">
+          <ShieldCheck size={14} />
         </div>
+        <input
+          type="text"
+          value={urlInput}
+          onChange={(e) => setUrlInput(e.target.value)}
+          onKeyDown={handleKeyDown}
+          className="w-full bg-white border border-black/5 rounded-full py-2.5 pl-10 pr-4 text-xs font-bold text-[#6B5E55] focus:border-[#E67E22]/40 outline-none transition-all shadow-sm group-hover:shadow-md"
+          disabled={!isConnected}
+          placeholder="Enter URL..."
+        />
       </div>
 
-      <div className="flex items-center gap-2">
-        <div className={`h-2 w-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
-        <span className="text-xs text-muted-foreground">
-          {isConnected ? 'Connected' : 'Disconnected'}
-        </span>
-      </div>
+      {/* Viewport Dimensions */}
     </div>
   );
 }

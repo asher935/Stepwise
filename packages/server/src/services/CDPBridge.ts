@@ -531,11 +531,73 @@ export class CDPBridge {
   }
 
   async takeScreenshot(clip?: { x: number; y: number; width: number; height: number }): Promise<Buffer> {
-    return await this.page.screenshot({
-      type: 'jpeg',
-      quality: 80,
+    const options: {
+      type: 'png' | 'jpeg';
+      quality?: number;
+      clip?: { x: number; y: number; width: number; height: number };
+    } = {
+      type: env.SCREENSHOT_FORMAT,
       clip,
+    };
+
+    // JPEG quality setting only applies to JPEG format
+    if (env.SCREENSHOT_FORMAT === 'jpeg') {
+      options.quality = env.SCREENSHOT_QUALITY;
+    }
+
+    return await this.page.screenshot(options);
+  }
+
+  /**
+   * Injects a highlight overlay for an element on the page
+   */
+  async injectHighlightOverlay(boundingBox: { x: number; y: number; width: number; height: number }): Promise<void> {
+    await this.page.evaluate(([box]) => {
+      // Create highlight overlay element
+      const overlay = document.createElement('div');
+      overlay.id = 'stepwise-highlight-overlay';
+      overlay.style.position = 'fixed';
+      overlay.style.left = `${box.x}px`;
+      overlay.style.top = `${box.y}px`;
+      overlay.style.width = `${box.width}px`;
+      overlay.style.height = `${box.height}px`;
+      overlay.style.border = '3px solid rgba(230, 126, 34, 0.9)';
+      overlay.style.borderRadius = '4px';
+      overlay.style.pointerEvents = 'none';
+      overlay.style.zIndex = '999999';
+      document.body.appendChild(overlay);
+    }, [boundingBox] as const);
+  }
+
+  /**
+   * Removes the highlight overlay from the page
+   */
+  async removeHighlightOverlay(): Promise<void> {
+    await this.page.evaluate(() => {
+      const overlay = document.getElementById('stepwise-highlight-overlay');
+      if (overlay) {
+        overlay.remove();
+      }
     });
+  }
+
+  /**
+   * Takes a screenshot with a highlight overlay around the specified element
+   */
+  async takeScreenshotWithHighlight(
+    boundingBox: { x: number; y: number; width: number; height: number },
+    clip?: { x: number; y: number; width: number; height: number }
+  ): Promise<Buffer> {
+    await this.injectHighlightOverlay(boundingBox);
+
+    // Small delay to ensure the overlay is rendered
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    const screenshot = await this.takeScreenshot(clip);
+
+    await this.removeHighlightOverlay();
+
+    return screenshot;
   }
 
   async cleanup(): Promise<void> {

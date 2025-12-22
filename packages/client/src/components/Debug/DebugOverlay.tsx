@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ClientMessage, ServerMessage } from '@stepwise/shared';
+import { Bug, X, Activity, Zap } from 'lucide-react';
 import { wsClient } from '@/lib/ws';
 import { useSessionStore } from '@/stores/sessionStore';
 
@@ -10,7 +11,7 @@ type MessageInfo = {
 
 function formatTime(value: number | null): string {
   if (!value) return '—';
-  return new Date(value).toLocaleTimeString();
+  return new Date(value).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
 function describeClientMessage(message: ClientMessage): string {
@@ -26,9 +27,8 @@ function describeClientMessage(message: ClientMessage): string {
     case 'ping':
       return 'ping';
     default: {
-      // Handle unknown message types
       const _exhaustiveCheck: never = message;
-      return `unknown:${(message as any).type}`;
+      return `unknown:${(message as { type: string }).type}`;
     }
   }
 }
@@ -60,9 +60,8 @@ function describeServerMessage(message: ServerMessage): string {
     case 'error':
       return `error ${message.code}`;
     default: {
-      // Handle unknown message types
       const _exhaustiveCheck: never = message;
-      return `unknown:${(message as any).type}`;
+      return `unknown:${(message as { type: string }).type}`;
     }
   }
 }
@@ -71,7 +70,7 @@ export function DebugOverlay() {
   const isConnected = useSessionStore((s) => s.isConnected);
   const sessionState = useSessionStore((s) => s.sessionState);
   const error = useSessionStore((s) => s.error);
-  const [isMinimized, setIsMinimized] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
   const [lastSent, setLastSent] = useState<MessageInfo | null>(null);
   const [lastReceived, setLastReceived] = useState<MessageInfo | null>(null);
   const [lastReceivedEvent, setLastReceivedEvent] = useState<MessageInfo | null>(null);
@@ -122,84 +121,110 @@ export function DebugOverlay() {
 
   if (!import.meta.env.DEV) return null;
 
+  if (!isOpen) {
+    return (
+      <button
+        onClick={() => setIsOpen(true)}
+        className="fixed bottom-6 left-6 z-[100] w-14 h-14 bg-white border border-black/5 rounded-full flex items-center justify-center text-[#BBAFA7] hover:text-[#E67E22] transition-all hover:scale-110 shadow-xl"
+        type="button"
+      >
+        <Bug size={24} />
+      </button>
+    );
+  }
+
   return (
-    <div className="fixed bottom-3 right-3 z-50 w-[360px] rounded-md border bg-background/95 shadow-lg backdrop-blur">
-      <div className="px-3 py-2 border-b text-xs font-semibold flex items-center justify-between">
-        <span>Debug Overlay</span>
+    <div className="fixed bottom-6 left-6 z-[100] w-96 max-h-[450px] bg-white/95 backdrop-blur-3xl border border-black/5 rounded-[40px] shadow-[0_30px_60px_rgba(45,36,30,0.12)] flex flex-col overflow-hidden animate-in slide-in-from-bottom-8 duration-500">
+      <div className="p-6 border-b border-black/5 flex items-center justify-between">
+        <div className="flex items-center text-[10px] font-black text-[#BBAFA7] uppercase tracking-[0.2em]">
+          <Activity size={14} className="mr-2 text-[#E67E22]" />
+          Debug Overlay
+        </div>
         <button
+          onClick={() => setIsOpen(false)}
+          className="text-[#BBAFA7] hover:text-[#2D241E] transition active:scale-90"
           type="button"
-          className="rounded-sm border px-2 py-0.5 text-[10px] uppercase tracking-wide hover:bg-muted"
-          onClick={() => setIsMinimized((value) => !value)}
         >
-          {isMinimized ? 'Expand' : 'Minimize'}
+          <X size={18} />
         </button>
       </div>
-      {!isMinimized && (
-        <div className="px-3 py-2 text-xs space-y-1">
-          <div className="flex justify-between">
-            <span>WS</span>
-            <span>{status}</span>
+
+      <div className="flex-1 overflow-y-auto p-6 space-y-4 scrollbar-thin">
+        <div className="p-4 bg-[#FDF2E9] rounded-[24px] border border-black/5 space-y-2">
+          <div className="flex justify-between text-[10px] font-mono font-bold">
+            <span className="text-[#BBAFA7] uppercase">WS</span>
+            <span className={isConnected ? 'text-[#E67E22]' : 'text-red-400'}>
+              {status}
+            </span>
           </div>
-          <div className="flex justify-between">
-            <span>WS URL</span>
-            <span className="truncate max-w-[200px]" title={wsClient.url ?? '—'}>{wsClient.url ?? '—'}</span>
+          <div className="flex justify-between text-[10px] font-mono font-bold">
+            <span className="text-[#BBAFA7] uppercase">WS URL</span>
+            <span className="text-[#2D241E] truncate max-w-[200px]" title={wsClient.url ?? '—'}>
+              {wsClient.url ?? '—'}
+            </span>
           </div>
-          <div className="flex justify-between">
-            <span>Session</span>
-            <span>{sessionState?.status ?? '—'}</span>
+          <div className="flex justify-between text-[10px] font-mono font-bold">
+            <span className="text-[#BBAFA7] uppercase">Session</span>
+            <span className="text-[#2D241E]">{sessionState?.status ?? '—'}</span>
           </div>
-          <div className="flex justify-between">
-            <span>Connected At</span>
-            <span>{formatTime(connectedAt)}</span>
+          <div className="flex justify-between text-[10px] font-mono font-bold">
+            <span className="text-[#BBAFA7] uppercase">Connected At</span>
+            <span className="text-[#2D241E]">{formatTime(connectedAt)}</span>
           </div>
-          <div className="flex justify-between">
-            <span>Disconnected At</span>
-            <span>{formatTime(disconnectedAt)}</span>
+          <div className="flex justify-between text-[10px] font-mono font-bold">
+            <span className="text-[#BBAFA7] uppercase">Disconnected At</span>
+            <span className="text-[#2D241E]">{formatTime(disconnectedAt)}</span>
           </div>
-          <div className="flex justify-between">
-            <span>Last Sent</span>
-            <span className="truncate max-w-[200px]" title={lastSent?.summary ?? '—'}>
+          <div className="flex justify-between text-[10px] font-mono font-bold">
+            <span className="text-[#BBAFA7] uppercase">Last Sent</span>
+            <span className="text-[#2D241E] truncate max-w-[200px]" title={lastSent?.summary ?? '—'}>
               {lastSent ? `${lastSent.summary} • ${formatTime(lastSent.at)}` : '—'}
             </span>
           </div>
-          <div className="flex justify-between">
-            <span>Last Received</span>
-            <span className="truncate max-w-[200px]" title={lastReceived?.summary ?? '—'}>
+          <div className="flex justify-between text-[10px] font-mono font-bold">
+            <span className="text-[#BBAFA7] uppercase">Last Received</span>
+            <span className="text-[#2D241E] truncate max-w-[200px]" title={lastReceived?.summary ?? '—'}>
               {lastReceived ? `${lastReceived.summary} • ${formatTime(lastReceived.at)}` : '—'}
             </span>
           </div>
-          <div className="flex justify-between">
-            <span>Last Event</span>
-            <span className="truncate max-w-[200px]" title={lastReceivedEvent?.summary ?? '—'}>
+          <div className="flex justify-between text-[10px] font-mono font-bold">
+            <span className="text-[#BBAFA7] uppercase">Last Event</span>
+            <span className="text-[#2D241E] truncate max-w-[200px]" title={lastReceivedEvent?.summary ?? '—'}>
               {lastReceivedEvent ? `${lastReceivedEvent.summary} • ${formatTime(lastReceivedEvent.at)}` : '—'}
             </span>
           </div>
-          <div className="flex justify-between">
-            <span>Last Pong</span>
-            <span>{formatTime(lastPongAt)}</span>
+          <div className="flex justify-between text-[10px] font-mono font-bold">
+            <span className="text-[#BBAFA7] uppercase">Last Pong</span>
+            <span className="text-[#2D241E]">{formatTime(lastPongAt)}</span>
           </div>
-          <div className="flex justify-between">
-            <span>Last Error</span>
-            <span className="truncate max-w-[200px]" title={lastError?.summary ?? '—'}>
+          <div className="flex justify-between text-[10px] font-mono font-bold">
+            <span className="text-[#BBAFA7] uppercase">Last Error</span>
+            <span className="text-[#2D241E] truncate max-w-[200px]" title={lastError?.summary ?? '—'}>
               {lastError ? `${lastError.summary} • ${formatTime(lastError.at)}` : '—'}
             </span>
           </div>
-          <div className="flex justify-between">
-            <span>Error</span>
-            <span className="truncate max-w-[200px]" title={error ?? '—'}>{error ?? '—'}</span>
-          </div>
-          <div className="pt-1">
-            <button
-              type="button"
-              className="w-full rounded-sm border px-2 py-1 text-xs hover:bg-muted"
-              onClick={() => wsClient.send({ type: 'ping', timestamp: Date.now() })}
-              disabled={!isConnected}
-            >
-              Send Ping
-            </button>
+          <div className="flex justify-between text-[10px] font-mono font-bold">
+            <span className="text-[#BBAFA7] uppercase">Error</span>
+            <span className="text-[#2D241E] truncate max-w-[200px]" title={error ?? '—'}>
+              {error ?? '—'}
+            </span>
           </div>
         </div>
-      )}
+
+        <button
+          type="button"
+          className="w-full py-3 px-4 bg-[#FDF2E9] hover:bg-[#FED8AA] rounded-2xl border border-black/5 flex items-center justify-center text-[10px] font-black text-[#2D241E] uppercase tracking-[0.2em] transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+          onClick={() => wsClient.send({ type: 'ping', timestamp: Date.now() })}
+          disabled={!isConnected}
+        >
+          <Zap size={14} className="mr-2" />
+          Send Ping
+        </button>
+      </div>
+
+      <div className="p-4 bg-[#FDF2E9]/60 border-t border-black/5 text-[9px] text-[#BBAFA7] font-black uppercase tracking-[0.2em] text-center">
+        Stepwise Engine • v1.0.4-LITE
+      </div>
     </div>
   );
 }

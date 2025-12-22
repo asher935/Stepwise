@@ -11,6 +11,12 @@ function getEnvString(key: string, defaultValue: string): string {
   return process.env[key] ?? defaultValue;
 }
 
+function getEnvScreenshotFormat(defaultValue: 'png' | 'jpeg'): 'png' | 'jpeg' {
+  const value = process.env['SCREENSHOT_FORMAT']?.toLowerCase();
+  if (value === 'png' || value === 'jpeg') return value;
+  return defaultValue;
+}
+
 export const env = {
   PORT: getEnvNumber('PORT', DEFAULTS.PORT),
   MAX_SESSIONS: getEnvNumber('MAX_SESSIONS', DEFAULTS.MAX_SESSIONS),
@@ -19,6 +25,8 @@ export const env = {
   BROWSER_VIEWPORT_WIDTH: getEnvNumber('BROWSER_VIEWPORT_WIDTH', DEFAULTS.BROWSER_VIEWPORT_WIDTH),
   BROWSER_VIEWPORT_HEIGHT: getEnvNumber('BROWSER_VIEWPORT_HEIGHT', DEFAULTS.BROWSER_VIEWPORT_HEIGHT),
   SCREENCAST_QUALITY: getEnvNumber('SCREENCAST_QUALITY', DEFAULTS.SCREENCAST_QUALITY),
+  SCREENSHOT_QUALITY: getEnvNumber('SCREENSHOT_QUALITY', DEFAULTS.SCREENSHOT_QUALITY),
+  SCREENSHOT_FORMAT: getEnvScreenshotFormat(DEFAULTS.SCREENSHOT_FORMAT),
   SCREENCAST_MAX_FPS: getEnvNumber('SCREENCAST_MAX_FPS', DEFAULTS.SCREENCAST_MAX_FPS),
   SESSION_TOKEN_BYTES: getEnvNumber('SESSION_TOKEN_BYTES', DEFAULTS.SESSION_TOKEN_BYTES),
   NODE_ENV: getEnvString('NODE_ENV', 'development'),

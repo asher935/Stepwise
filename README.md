@@ -105,7 +105,9 @@ stepwise/
 | `MAX_STEPS_PER_SESSION` | 200 | Maximum steps per session |
 | `BROWSER_VIEWPORT_WIDTH` | 1280 | Browser viewport width |
 | `BROWSER_VIEWPORT_HEIGHT` | 800 | Browser viewport height |
-| `SCREENCAST_QUALITY` | 80 | JPEG quality (1-100) |
+| `SCREENCAST_QUALITY` | 80 | JPEG quality for live screencast (1-100) |
+| `SCREENSHOT_FORMAT` | png | Screenshot format (png or jpeg) |
+| `SCREENSHOT_QUALITY` | 95 | JPEG quality for screenshots (only used when format=jpeg, 1-100) |
 | `SCREENCAST_MAX_FPS` | 15 | Maximum frame rate |
 
 ## API Endpoints

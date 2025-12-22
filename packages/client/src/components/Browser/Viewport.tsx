@@ -4,6 +4,7 @@
 import { useCallback, useRef } from 'react';
 
 import { DEFAULTS } from '@stepwise/shared';
+import type { ElementInfo } from '@stepwise/shared';
 
 import { translateClientToBrowser } from '@/lib/coords';
 import { wsClient } from '@/lib/ws';
@@ -19,6 +20,7 @@ export function Viewport() {
   const imageRef = useRef<HTMLImageElement>(null);
   const currentFrame = useSessionStore((s) => s.currentFrame);
   const isConnected = useSessionStore((s) => s.isConnected);
+  const hoveredElement = useSessionStore((s) => s.hoveredElement);
 
   const getViewportRect = useCallback((): DOMRect | null => {
     return imageRef.current?.getBoundingClientRect() ?? null;
@@ -108,6 +110,27 @@ export function Viewport() {
     );
   }, []);
 
+  // Calculate highlight overlay position based on viewport scale
+  const getHighlightStyle = useCallback((): React.CSSProperties | null => {
+    if (!hoveredElement || !imageRef.current) return null;
+
+    const rect = imageRef.current.getBoundingClientRect();
+    const scaleX = rect.width / BROWSER_DIMENSIONS.width;
+    const scaleY = rect.height / BROWSER_DIMENSIONS.height;
+
+    return {
+      position: 'absolute',
+      left: `${hoveredElement.boundingBox.x * scaleX}px`,
+      top: `${hoveredElement.boundingBox.y * scaleY}px`,
+      width: `${hoveredElement.boundingBox.width * scaleX}px`,
+      height: `${hoveredElement.boundingBox.height * scaleY}px`,
+      border: '2px solid rgba(59, 130, 246, 0.8)',
+      backgroundColor: 'rgba(59, 130, 246, 0.1)',
+      pointerEvents: 'none',
+      zIndex: 10,
+    };
+  }, [hoveredElement]);
+
   if (!isConnected || !currentFrame) {
     return (
       <div className="flex-1 flex items-center justify-center bg-muted/50">
@@ -119,6 +142,8 @@ export function Viewport() {
     );
   }
 
+  const highlightStyle = getHighlightStyle();
+
   return (
     <section
       ref={containerRef}
@@ -128,20 +153,23 @@ export function Viewport() {
       onKeyUp={handleKeyUp}
       aria-label="Browser Viewport"
     >
-      <img
-        ref={imageRef}
-        src={currentFrame}
-        alt="Browser viewport"
-        className="max-w-full max-h-full object-contain shadow-lg rounded-sm cursor-default select-none"
-        style={{ aspectRatio: `${BROWSER_DIMENSIONS.width}/${BROWSER_DIMENSIONS.height}` }}
-        onMouseMove={handleMouseMove}
-        onMouseDown={handleMouseDown}
-        onMouseUp={handleMouseUp}
-        onClick={handleClick}
-        onContextMenu={handleContextMenu}
-        onWheel={handleWheel}
-        draggable={false}
-      />
+      <div className="relative">
+        <img
+          ref={imageRef}
+          src={currentFrame}
+          alt="Browser viewport"
+          className="max-w-full max-h-full object-contain shadow-lg rounded-sm cursor-default select-none"
+          style={{ aspectRatio: `${BROWSER_DIMENSIONS.width}/${BROWSER_DIMENSIONS.height}` }}
+          onMouseMove={handleMouseMove}
+          onMouseDown={handleMouseDown}
+          onMouseUp={handleMouseUp}
+          onClick={handleClick}
+          onContextMenu={handleContextMenu}
+          onWheel={handleWheel}
+          draggable={false}
+        />
+        {highlightStyle && <div style={highlightStyle} />}
+      </div>
     </section>
   );
 }

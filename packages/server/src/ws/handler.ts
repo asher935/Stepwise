@@ -12,11 +12,17 @@ const RATE_LIMIT = {
   RESET_INTERVAL_MS: 1000,
 };
 
+// Element hover throttling configuration
+const HOVER_THROTTLE = {
+  MIN_INTERVAL_MS: 67, // ~15 updates per second
+};
+
 // Active connections and their state
 const connections = new Map<ServerWebSocket<WSConnection>, {
   bridge: CDPBridge | null;
   recorder: Recorder | null;
   rateLimit: RateLimitState;
+  lastHoverUpdate: number;
 }>();
 
 type OutgoingMessage = ServerMessage | CDPErrorMessage | InputErrorMessage | RateLimitedMessage;
@@ -175,6 +181,7 @@ export async function handleOpen(ws: ServerWebSocket<WSConnection>): Promise<voi
     bridge: null as CDPBridge | null,
     recorder: null as Recorder | null,
     rateLimit: { inputCount: 0, lastReset: Date.now() },
+    lastHoverUpdate: 0,
   };
   
   connections.set(ws, state);
@@ -377,11 +384,11 @@ export async function handleMessage(
  */
 async function handleMouseInput(
   ws: ServerWebSocket<WSConnection>,
-  state: { bridge: CDPBridge | null; recorder: Recorder | null; rateLimit: RateLimitState },
+  state: { bridge: CDPBridge | null; recorder: Recorder | null; rateLimit: RateLimitState; lastHoverUpdate: number },
   message: { type: 'input:mouse'; action: string; x: number; y: number; button?: string }
 ): Promise<void> {
   if (!state.bridge || !state.recorder) return;
-  
+
   // Rate limit check
   if (!checkRateLimit(state.rateLimit)) {
     send(ws, {
@@ -392,7 +399,7 @@ async function handleMouseInput(
     });
     return;
   }
-  
+
   // Validate CDP session health before proceeding
   if (!(await state.bridge.isCDPHealthy())) {
     send(ws, {
@@ -403,14 +410,29 @@ async function handleMouseInput(
     });
     return;
   }
-  
+
   const { action, x, y, button = 'left' } = message;
   const btn = button as 'left' | 'right' | 'middle';
-  
+
   try {
     switch (action) {
       case 'move':
         await state.bridge.sendMouseInput('move', x, y, btn);
+        // Element hover detection with throttling
+        const now = Date.now();
+        if (now - state.lastHoverUpdate >= HOVER_THROTTLE.MIN_INTERVAL_MS) {
+          state.lastHoverUpdate = now;
+          const element = await state.bridge.getElementAtPoint(x, y);
+          send(ws, {
+            type: 'element:hover',
+            element: element ? {
+              tagName: element.tagName,
+              id: element.id,
+              className: element.className,
+              boundingBox: element.boundingBox,
+            } : null,
+          });
+        }
         break;
 
       case 'down':

@@ -1,4 +1,4 @@
-import type { SessionState, Step } from '@stepwise/shared';
+import type { SessionState, Step, ElementInfo } from '@stepwise/shared';
 import { create } from 'zustand';
 import { api } from '../lib/api';
 import { wsClient } from '../lib/ws';
@@ -12,6 +12,7 @@ interface SessionStore {
   isConnected: boolean;
   isLoading: boolean;
   error: string | null;
+  hoveredElement: ElementInfo | null;
 
   createSession: () => Promise<void>;
   startSession: (startUrl?: string) => Promise<void>;
@@ -23,6 +24,7 @@ interface SessionStore {
   setConnected: (connected: boolean) => void;
   setError: (error: string | null) => void;
   setSessionState: (state: SessionState | null) => void;
+  setHoveredElement: (element: ElementInfo | null) => void;
   reset: () => void;
 
   initWebSocket: () => () => void;
@@ -37,6 +39,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   isConnected: false,
   isLoading: false,
   error: null,
+  hoveredElement: null,
 
   createSession: async () => {
     set({ isLoading: true, error: null });
@@ -139,6 +142,10 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     set({ sessionState: state });
   },
 
+  setHoveredElement: (element: ElementInfo | null) => {
+    set({ hoveredElement: element });
+  },
+
   reset: () => {
     api.clearToken();
     set({
@@ -150,6 +157,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       isConnected: false,
       isLoading: false,
       error: null,
+      hoveredElement: null,
     });
   },
 
@@ -169,7 +177,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
           break;
         case 'step:updated':
           set(state => ({
-            steps: state.steps.map(s => 
+            steps: state.steps.map(s =>
               s.id === message.step.id ? message.step : s
             )
           }));
@@ -181,6 +189,9 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
           break;
         case 'session:state':
           set({ sessionState: message.state });
+          break;
+        case 'element:hover':
+          set({ hoveredElement: message.element });
           break;
         case 'error':
           set({ error: message.message });
@@ -207,7 +218,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     });
 
     const unsubDisconnect = wsClient.onDisconnect(() => {
-      set({ isConnected: false });
+      set({ isConnected: false, hoveredElement: null });
     });
 
     return () => {

@@ -63,6 +63,14 @@ export type ClientMessage =
   | NavigateMessage
   | PingMessage;
 
+/** Element information for hover highlighting */
+export interface ElementInfo {
+  tagName: string;
+  id?: string;
+  className?: string;
+  boundingBox: { x: number; y: number; width: number; height: number };
+}
+
 /** Server-to-client message types */
 export type ServerMessageType =
   | 'frame'
@@ -75,7 +83,8 @@ export type ServerMessageType =
   | 'cdp:error'
   | 'input:error'
   | 'rate:limited'
-  | 'session:unhealthy';
+  | 'session:unhealthy'
+  | 'element:hover';
 
 /** Screencast frame message */
 export interface FrameMessage {
@@ -148,6 +157,12 @@ export interface SessionUnhealthyMessage {
   reason: string;
 }
 
+/** Element hover message */
+export interface ElementHoverMessage {
+  type: 'element:hover';
+  element: ElementInfo | null;
+}
+
 /** Server-to-client messages union */
 export type ServerMessage =
   | FrameMessage
@@ -160,4 +175,5 @@ export type ServerMessage =
   | CDPErrorMessage
   | InputErrorMessage
   | RateLimitedMessage
-  | SessionUnhealthyMessage;
+  | SessionUnhealthyMessage
+  | ElementHoverMessage;

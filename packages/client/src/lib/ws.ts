@@ -7,10 +7,12 @@ import type {
 
 type MessageHandler = (message: ServerMessage) => void;
 type ConnectionHandler = () => void;
+type SendHandler = (message: ClientMessage) => void;
 
 class WebSocketClient {
   private ws: WebSocket | null = null;
   private messageHandlers: Set<MessageHandler> = new Set();
+  private sendHandlers: Set<SendHandler> = new Set();
   private connectHandlers: Set<ConnectionHandler> = new Set();
   private disconnectHandlers: Set<ConnectionHandler> = new Set();
   private reconnectAttempts = 0;
@@ -19,6 +21,7 @@ class WebSocketClient {
   private pingInterval: ReturnType<typeof setInterval> | null = null;
   private sessionId: string | null = null;
   private token: string | null = null;
+  private currentUrl: string | null = null;
 
   connect(sessionId: string, token: string): void {
     this.sessionId = sessionId;
@@ -34,6 +37,7 @@ class WebSocketClient {
     const host = isDev ? 'localhost:3000' : window.location.host;
     const url = `${protocol}//${host}/ws?sessionId=${this.sessionId}&token=${this.token}`;
 
+    this.currentUrl = url;
     this.ws = new WebSocket(url);
 
     this.ws.onopen = () => {
@@ -100,23 +104,24 @@ class WebSocketClient {
     this.reconnectAttempts = this.maxReconnectAttempts;
     this.ws?.close();
     this.ws = null;
+    this.currentUrl = null;
   }
 
   send(message: ClientMessage): void {
     if (this.ws?.readyState === WebSocket.OPEN) {
-      const wrappedMessage = {
-        id: crypto.randomUUID(),
-        type: 'BROWSER_ACTION',
-        timestamp: Date.now(),
-        payload: message
-      };
-      this.ws.send(JSON.stringify(wrappedMessage));
+      this.sendHandlers.forEach(h => { h(message); });
+      this.ws.send(JSON.stringify(message));
     }
   }
 
   onMessage(handler: MessageHandler): () => void {
     this.messageHandlers.add(handler);
     return () => this.messageHandlers.delete(handler);
+  }
+
+  onSend(handler: SendHandler): () => void {
+    this.sendHandlers.add(handler);
+    return () => this.sendHandlers.delete(handler);
   }
 
   onConnect(handler: ConnectionHandler): () => void {
@@ -131,6 +136,10 @@ class WebSocketClient {
 
   get isConnected(): boolean {
     return this.ws?.readyState === WebSocket.OPEN;
+  }
+
+  get url(): string | null {
+    return this.currentUrl;
   }
 
   sendMouseMove(x: number, y: number): void {

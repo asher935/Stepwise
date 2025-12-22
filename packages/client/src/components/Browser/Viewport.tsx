@@ -38,6 +38,7 @@ export function Viewport() {
   }, [translateCoords]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    containerRef.current?.focus();
     const coords = translateCoords(e.clientX, e.clientY);
     if (coords) {
       const button = e.button === 0 ? 'left' : e.button === 2 ? 'right' : 'middle';

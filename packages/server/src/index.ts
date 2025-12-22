@@ -39,22 +39,20 @@ const app = new Elysia()
   
   .ws('/ws', {
     open(ws) {
-      const query = ws.data.query as { sessionId: string; token: string };
-      (ws as unknown as ServerWebSocket<WSConnection>).data = {
-        sessionId: query.sessionId,
-        token: query.token,
-        lastPingAt: Date.now(),
-      };
-      handleOpen(ws as unknown as ServerWebSocket<WSConnection>);
+      const raw = (ws as { raw?: ServerWebSocket<WSConnection> }).raw ?? (ws as unknown as ServerWebSocket<WSConnection>);
+      const query = raw.data.query as { sessionId: string; token: string };
+      raw.data.sessionId = query.sessionId;
+      raw.data.token = query.token;
+      raw.data.lastPingAt = Date.now();
+      handleOpen(raw);
     },
     message(ws, message) {
-      handleMessage(
-        ws as unknown as ServerWebSocket<WSConnection>, 
-        message as string | Buffer
-      );
+      const raw = (ws as { raw?: ServerWebSocket<WSConnection> }).raw ?? (ws as unknown as ServerWebSocket<WSConnection>);
+      handleMessage(raw, message);
     },
     close(ws) {
-      handleClose(ws as unknown as ServerWebSocket<WSConnection>);
+      const raw = (ws as { raw?: ServerWebSocket<WSConnection> }).raw ?? (ws as unknown as ServerWebSocket<WSConnection>);
+      handleClose(raw);
     },
   })
 

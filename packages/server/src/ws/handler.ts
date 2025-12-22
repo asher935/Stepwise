@@ -20,6 +20,80 @@ const connections = new Map<ServerWebSocket<WSConnection>, {
 }>();
 
 type OutgoingMessage = ServerMessage | CDPErrorMessage | InputErrorMessage | RateLimitedMessage;
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function isModifiers(value: unknown): value is { ctrl?: boolean; alt?: boolean; shift?: boolean; meta?: boolean } {
+  if (!isRecord(value)) return false;
+  const { ctrl, alt, shift, meta } = value;
+  if (ctrl !== undefined && typeof ctrl !== 'boolean') return false;
+  if (alt !== undefined && typeof alt !== 'boolean') return false;
+  if (shift !== undefined && typeof shift !== 'boolean') return false;
+  if (meta !== undefined && typeof meta !== 'boolean') return false;
+  return true;
+}
+
+function isClientMessage(value: unknown): value is ClientMessage {
+  if (!isRecord(value)) return false;
+  const type = value.type;
+  if (typeof type !== 'string') return false;
+
+  if (type === 'input:mouse') {
+    const action = value.action;
+    const x = value.x;
+    const y = value.y;
+    const button = value.button;
+    if (action !== 'move' && action !== 'down' && action !== 'up' && action !== 'click') return false;
+    if (typeof x !== 'number' || typeof y !== 'number') return false;
+    if (button !== undefined && button !== 'left' && button !== 'right' && button !== 'middle') return false;
+    return true;
+  }
+
+  if (type === 'input:keyboard') {
+    const action = value.action;
+    const key = value.key;
+    const text = value.text;
+    const modifiers = value.modifiers;
+    if (action !== 'down' && action !== 'up' && action !== 'press') return false;
+    if (typeof key !== 'string') return false;
+    if (text !== undefined && typeof text !== 'string') return false;
+    if (modifiers !== undefined && !isModifiers(modifiers)) return false;
+    return true;
+  }
+
+  if (type === 'input:scroll') {
+    const { deltaX, deltaY, x, y } = value;
+    if (typeof deltaX !== 'number' || typeof deltaY !== 'number') return false;
+    if (typeof x !== 'number' || typeof y !== 'number') return false;
+    return true;
+  }
+
+  if (type === 'navigate') {
+    const action = value.action;
+    const url = value.url;
+    if (action !== 'goto' && action !== 'back' && action !== 'forward' && action !== 'reload') return false;
+    if (url !== undefined && typeof url !== 'string') return false;
+    return true;
+  }
+
+  if (type === 'ping') {
+    const timestamp = value.timestamp;
+    if (typeof timestamp !== 'number') return false;
+    return true;
+  }
+
+  return false;
+}
+
+function unwrapClientMessage(value: unknown): ClientMessage | null {
+  if (isClientMessage(value)) return value;
+  if (!isRecord(value)) return null;
+  if (value.type !== 'BROWSER_ACTION') return null;
+  const payload = value.payload;
+  if (!isClientMessage(payload)) return null;
+  return payload;
+}
 
 /**
  * Sends a message to a WebSocket client
@@ -174,9 +248,26 @@ async function setupBridgeAndRecorder(
 /**
  * Handles WebSocket message
  */
+function decodeMessage(value: unknown): string | unknown {
+  if (typeof value === 'string') return value;
+  if (value instanceof Uint8Array) {
+    return new TextDecoder().decode(value);
+  }
+  if (value instanceof ArrayBuffer) {
+    return new TextDecoder().decode(new Uint8Array(value));
+  }
+  if (typeof Buffer !== 'undefined' && value instanceof Buffer) {
+    return value.toString();
+  }
+  if (isRecord(value) && 'data' in value) {
+    return decodeMessage(value.data);
+  }
+  return value;
+}
+
 export async function handleMessage(
   ws: ServerWebSocket<WSConnection>,
-  _message: string | Buffer
+  _message: unknown
 ): Promise<void> {
   const state = connections.get(ws);
   if (!state) return;
@@ -187,17 +278,41 @@ export async function handleMessage(
   sessionManager.updateActivity(sessionId);
   
   // Parse message
-  let parsed: ClientMessage;
+  let parsed: ClientMessage | null;
   try {
-    const text = typeof _message === 'string' ? _message : _message.toString();
-    parsed = JSON.parse(text) as ClientMessage;
+    const decoded = decodeMessage(_message);
+    if (typeof decoded === 'string') {
+      parsed = unwrapClientMessage(JSON.parse(decoded) as unknown);
+    } else {
+      parsed = unwrapClientMessage(decoded);
+    }
   } catch {
+    console.warn('[WS] Failed to parse message', {
+      sessionId,
+    });
     send(ws, {
       type: 'error',
       code: 'INVALID_MESSAGE',
       message: 'Invalid message format',
     });
     return;
+  }
+  if (!parsed) {
+    send(ws, {
+      type: 'error',
+      code: 'INVALID_MESSAGE',
+      message: 'Invalid message format',
+    });
+    return;
+  }
+
+  if (
+    parsed.type === 'ping' ||
+    parsed.type === 'input:keyboard' ||
+    parsed.type === 'input:scroll' ||
+    (parsed.type === 'input:mouse' && parsed.action !== 'move')
+  ) {
+    console.log('[WS] Received action', parsed);
   }
   
   // Handle message types

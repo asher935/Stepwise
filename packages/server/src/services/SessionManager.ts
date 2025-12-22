@@ -155,6 +155,7 @@ class SessionManager {
           height: env.BROWSER_VIEWPORT_HEIGHT,
         },
       });
+      await page.bringToFront();
 
       // Get CDP session
       const cdp = await page.context().newCDPSession(page);

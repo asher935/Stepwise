@@ -172,6 +172,20 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         case 'error':
           set({ error: message.message });
           break;
+        case 'cdp:error':
+          console.error('[CDP] Error:', message);
+          set({ error: message.message });
+          break;
+        case 'input:error':
+          console.error('[Input] Error:', message);
+          set({ error: message.reason });
+          break;
+        case 'rate:limited':
+          console.warn('[Input] Rate limited:', message);
+          break;
+        case 'session:unhealthy':
+          console.warn('[Session] Unhealthy:', message);
+          break;
       }
     });
 

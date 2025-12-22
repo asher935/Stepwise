@@ -8,16 +8,11 @@ it('sends mouse click input when connected', () => {
   wsClient.sendMouseClick(10, 20, 'left');
 
   const message = JSON.parse(sent[0]);
-  expect(message).toHaveProperty('id');
-  expect(message).toHaveProperty('type');
-  expect(message).toHaveProperty('timestamp');
-  expect(message).toHaveProperty('payload');
-  expect(message.type).toBe('BROWSER_ACTION');
-  expect(message.payload.type).toBe('input:mouse');
-  expect(message.payload.action).toBe('click');
-  expect(message.payload.x).toBe(10);
-  expect(message.payload.y).toBe(20);
-  expect(message.payload.button).toBe('left');
+  expect(message.type).toBe('input:mouse');
+  expect(message.action).toBe('click');
+  expect(message.x).toBe(10);
+  expect(message.y).toBe(20);
+  expect(message.button).toBe('left');
 });
 
 it('sends mouse move input when connected', () => {
@@ -27,9 +22,8 @@ it('sends mouse move input when connected', () => {
   wsClient.sendMouseMove(50, 75);
 
   const message = JSON.parse(sent[0]);
-  expect(message.type).toBe('BROWSER_ACTION');
-  expect(message.payload.type).toBe('input:mouse');
-  expect(message.payload.action).toBe('move');
-  expect(message.payload.x).toBe(50);
-  expect(message.payload.y).toBe(75);
+  expect(message.type).toBe('input:mouse');
+  expect(message.action).toBe('move');
+  expect(message.x).toBe(50);
+  expect(message.y).toBe(75);
 });

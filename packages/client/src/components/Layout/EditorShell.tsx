@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Download, Upload, LogOut, Menu } from 'lucide-react';
 import { Toolbar } from '@/components/Browser/Toolbar';
 import { Viewport } from '@/components/Browser/Viewport';
+import { DebugOverlay } from '@/components/Debug/DebugOverlay';
 import { ExportModal } from '@/components/Export/ExportModal';
 import { ImportModal } from '@/components/Import/ImportModal';
 import { StepsList } from '@/components/Steps/StepsList';
@@ -79,6 +80,7 @@ export function EditorShell() {
 
       <ExportModal open={showExport} onOpenChange={setShowExport} />
       <ImportModal open={showImport} onOpenChange={setShowImport} />
+      <DebugOverlay />
     </div>
   );
 }

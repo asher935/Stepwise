@@ -8,8 +8,12 @@ test('inputs are ignored while screencast frames stream', async () => {
     body: JSON.stringify({ startUrl: 'data:text/html,<button id="btn">Click</button>' }),
   });
 
-  const { sessionId, token } = await sessionResponse.json();
-  await fetch(`http://localhost:3000/api/sessions/${sessionId}/start`, { method: 'POST' });
+  const { data } = await sessionResponse.json();
+  const { sessionId, token } = data;
+  await fetch(`http://localhost:3000/api/sessions/${sessionId}/start`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${token}` },
+  });
 
   const ws = new WebSocket(`ws://localhost:3000/ws?sessionId=${sessionId}&token=${token}`);
   const messages: Record<string, unknown>[] = [];

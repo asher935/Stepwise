@@ -58,7 +58,7 @@ bun run dev
 # bun run dev:client  # Frontend runs on http://localhost:5173
 ```
 
-**Access the application:** http://localhost:3000
+**Access the application:** http://localhost:5173
 
 ---
 

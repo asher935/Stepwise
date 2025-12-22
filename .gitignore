@@ -7,3 +7,5 @@ dist/
 bun.lockb
 packages/client/.vite/
 /tmp/
+playwright-report/
+test-results/

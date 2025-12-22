@@ -90,7 +90,7 @@ docker compose -f docker/docker-compose.dev.yml up -d --build
 - Changes to your code hot-reload automatically
 - Only rebuild if `docker/Dockerfile.dev` changes
 
-**Access the application:** http://localhost:3000
+**Access the application:** http://localhost:5173
 
 **To stop:**
 ```bash

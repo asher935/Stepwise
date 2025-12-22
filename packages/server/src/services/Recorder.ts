@@ -24,8 +24,11 @@ export class Recorder {
   private eventHandlers: Map<StepEventType, Set<StepEventHandler>> = new Map();
   private pendingTypeStep: TypeStep | null = null;
   private typeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
-  private lastScrollTime: number = 0;
-  private scrollDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private pendingScrollData: {
+    totalDeltaX: number;
+    totalDeltaY: number;
+    lastScrollTime: number;
+  } | null = null;
   private pendingClickScreenshot: {
     x: number;
     y: number;
@@ -152,38 +155,51 @@ export class Recorder {
     const viewport = await this.getViewportSize();
     if (!viewport) return null;
 
+    // Minimum and maximum screenshot dimensions
+    const minWidth = 400;
+    const minHeight = 300;
+    const maxWidth = viewport.width;
+    const maxHeight = viewport.height;
+
+    // Use element bounding box if available, otherwise fall back to cursor area
     const baseBox = boundingBox && boundingBox.width > 0 && boundingBox.height > 0
       ? boundingBox
       : point
-        ? { x: point.x - 60, y: point.y - 60, width: 120, height: 120 }
+        ? { x: point.x - 100, y: point.y - 100, width: 200, height: 200 }
         : null;
 
     if (!baseBox) return null;
 
-    const padding = 40;
-    const minSize = 160;
+    // Calculate center point of the element/click
+    const centerX = baseBox.x + baseBox.width / 2;
+    const centerY = baseBox.y + baseBox.height / 2;
 
+    // Start with element bounds and add padding for context
+    const padding = 40;
     let x = baseBox.x - padding;
     let y = baseBox.y - padding;
     let width = baseBox.width + padding * 2;
     let height = baseBox.height + padding * 2;
 
-    if (width < minSize) {
-      const extra = (minSize - width) / 2;
-      x -= extra;
-      width = minSize;
+    // Ensure minimum dimensions by expanding from center
+    if (width < minWidth) {
+      const diff = minWidth - width;
+      x -= diff / 2;
+      width = minWidth;
+    }
+    if (height < minHeight) {
+      const diff = minHeight - height;
+      y -= diff / 2;
+      height = minHeight;
     }
 
-    if (height < minSize) {
-      const extra = (minSize - height) / 2;
-      y -= extra;
-      height = minSize;
-    }
+    // Ensure maximum dimensions
+    width = Math.min(width, maxWidth);
+    height = Math.min(height, maxHeight);
 
-    x = Math.max(0, Math.min(x, viewport.width - 1));
-    y = Math.max(0, Math.min(y, viewport.height - 1));
-    width = Math.min(width, viewport.width - x);
-    height = Math.min(height, viewport.height - y);
+    // Clip to viewport boundaries
+    x = Math.max(0, Math.min(x, viewport.width - width));
+    y = Math.max(0, Math.min(y, viewport.height - height));
 
     if (width <= 1 || height <= 1) return null;
 
@@ -201,7 +217,7 @@ export class Recorder {
   ): Promise<void> {
     if (this.isStepLimitReached()) return;
 
-    // Flush any pending type step
+    // Flush any pending type step (scroll will be flushed in recordClick)
     await this.flushPendingTypeStep();
 
     // Get element info at click point
@@ -239,6 +255,9 @@ export class Recorder {
     button: 'left' | 'right' | 'middle' = 'left'
   ): Promise<Step | null> {
     if (this.isStepLimitReached()) return null;
+
+    // Flush any pending scroll step first (in case prepareClickScreenshot wasn't called)
+    await this.flushPendingScrollStep();
 
     let screenshotData: Buffer;
     let screenshotPath: string;
@@ -314,6 +333,8 @@ export class Recorder {
 
     // If no pending type step, create one
     if (!this.pendingTypeStep) {
+      // Flush any pending scroll step before starting typing
+      await this.flushPendingScrollStep();
       // Get focused element
       const focusedElement = await this.getFocusedElementInfo();
       
@@ -378,8 +399,9 @@ export class Recorder {
   async recordNavigation(fromUrl: string, toUrl: string): Promise<Step | null> {
     if (this.isStepLimitReached()) return null;
 
-    // Flush any pending type step
+    // Flush any pending type or scroll steps
     await this.flushPendingTypeStep();
+    await this.flushPendingScrollStep();
 
     // Capture screenshot after navigation settles
     const screenshotData = await this.captureScreenshot(500);
@@ -401,45 +423,63 @@ export class Recorder {
   }
 
   /**
-   * Records scroll action (debounced)
+   * Records scroll action (tracked until next action)
    */
   async recordScroll(deltaX: number, deltaY: number): Promise<void> {
     if (this.isStepLimitReached()) return;
 
-    // Debounce scroll recording
     const now = Date.now();
-    if (now - this.lastScrollTime < 500) {
-      // Update existing scroll step if recent
-      if (this.scrollDebounceTimer) {
-        clearTimeout(this.scrollDebounceTimer);
-      }
+
+    // Initialize or update pending scroll data
+    if (!this.pendingScrollData) {
+      this.pendingScrollData = {
+        totalDeltaX: 0,
+        totalDeltaY: 0,
+        lastScrollTime: now,
+      };
     }
 
-    this.lastScrollTime = now;
+    // Accumulate scroll deltas
+    this.pendingScrollData.totalDeltaX += deltaX;
+    this.pendingScrollData.totalDeltaY += deltaY;
+    this.pendingScrollData.lastScrollTime = now;
+  }
 
-    // Set timer to create scroll step after scrolling stops
-    this.scrollDebounceTimer = setTimeout(async () => {
-      const direction = Math.abs(deltaY) > Math.abs(deltaX)
-        ? (deltaY > 0 ? 'down' : 'up')
-        : (deltaX > 0 ? 'right' : 'left');
+  /**
+   * Flushes pending scroll step (creates one scroll step if scrolling occurred)
+   */
+  private async flushPendingScrollStep(): Promise<void> {
+    if (!this.pendingScrollData) return;
 
-      const distance = Math.max(Math.abs(deltaX), Math.abs(deltaY));
+    // Only create a step if there was meaningful scroll distance
+    const { totalDeltaX, totalDeltaY } = this.pendingScrollData;
+    const distance = Math.max(Math.abs(totalDeltaX), Math.abs(totalDeltaY));
 
-      const screenshotData = await this.captureScreenshot(100);
-      const screenshotPath = await this.saveScreenshot(screenshotData);
-      const screenshotDataUrl = this.toScreenshotDataUrl(screenshotData);
+    // Minimum scroll distance to record (10 pixels)
+    if (distance < 10) {
+      this.pendingScrollData = null;
+      return;
+    }
 
-      const step: ScrollStep = {
-        ...this.createBaseStep(screenshotPath, screenshotDataUrl),
-        action: 'scroll',
-        direction,
-        distance,
-        caption: `Scroll ${direction}`,
-      };
+    const direction = Math.abs(totalDeltaY) > Math.abs(totalDeltaX)
+      ? (totalDeltaY > 0 ? 'down' : 'up')
+      : (totalDeltaX > 0 ? 'right' : 'left');
 
-      this.session.steps.push(step);
-      this.emit('step:created', step);
-    }, 300);
+    const screenshotData = await this.captureScreenshot(100);
+    const screenshotPath = await this.saveScreenshot(screenshotData);
+    const screenshotDataUrl = this.toScreenshotDataUrl(screenshotData);
+
+    const step: ScrollStep = {
+      ...this.createBaseStep(screenshotPath, screenshotDataUrl),
+      action: 'scroll',
+      direction,
+      distance,
+      caption: `Scroll ${direction}`,
+    };
+
+    this.pendingScrollData = null;
+    this.session.steps.push(step);
+    this.emit('step:created', step);
   }
 
   /**
@@ -633,10 +673,8 @@ export class Recorder {
     if (this.typeDebounceTimer) {
       clearTimeout(this.typeDebounceTimer);
     }
-    if (this.scrollDebounceTimer) {
-      clearTimeout(this.scrollDebounceTimer);
-    }
     this.pendingClickScreenshot = null;
+    this.pendingScrollData = null;
     await this.flushPendingTypeStep();
   }
 }

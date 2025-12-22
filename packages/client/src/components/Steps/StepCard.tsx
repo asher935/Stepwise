@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { Trash2, Edit2, Check, X } from 'lucide-react';
+import { Trash2, Edit2, Check, X, ChevronDown, ChevronUp } from 'lucide-react';
 import type { Step } from '@stepwise/shared';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -13,8 +13,16 @@ interface StepCardProps {
 export function StepCard({ step }: StepCardProps) {
   const updateStep = useSessionStore((s) => s.updateStep);
   const deleteStep = useSessionStore((s) => s.deleteStep);
+  const collapsedStepIds = useSessionStore((s) => s.collapsedStepIds);
+  const toggleStepCollapsed = useSessionStore((s) => s.toggleStepCollapsed);
   const [isEditing, setIsEditing] = useState(false);
   const [caption, setCaption] = useState(step.caption);
+
+  const isCollapsed = collapsedStepIds.has(step.id);
+
+  const handleToggleCollapse = useCallback(() => {
+    toggleStepCollapsed(step.id);
+  }, [toggleStepCollapsed, step.id]);
 
   const handleSave = useCallback(async () => {
     await updateStep(step.id, { caption });
@@ -40,7 +48,8 @@ export function StepCard({ step }: StepCardProps) {
 
   return (
     <Card className="overflow-hidden group">
-      <div className="relative aspect-video bg-muted">
+      {!isCollapsed && (
+        <div className="relative aspect-video bg-muted">
         {step.screenshotDataUrl ? (
           <img
             src={step.screenshotDataUrl}
@@ -55,7 +64,16 @@ export function StepCard({ step }: StepCardProps) {
         <div className="absolute top-2 left-2 bg-primary text-primary-foreground rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">
           {step.index + 1}
         </div>
-        <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+          <Button
+            variant="secondary"
+            size="icon"
+            className="h-6 w-6 bg-background/80 backdrop-blur"
+            onClick={handleToggleCollapse}
+            aria-label={isCollapsed ? 'Expand step' : 'Collapse step'}
+          >
+            {isCollapsed ? <ChevronDown className="h-3 w-3" /> : <ChevronUp className="h-3 w-3" />}
+          </Button>
           <Button
             variant="destructive"
             size="icon"
@@ -67,8 +85,9 @@ export function StepCard({ step }: StepCardProps) {
           </Button>
         </div>
       </div>
-      
-      <div className="p-3">
+      )}
+
+      <div className={`p-3 ${isCollapsed ? 'hidden' : ''}`}>
         {isEditing ? (
           <div className="flex items-center gap-1">
             <Input
@@ -100,6 +119,46 @@ export function StepCard({ step }: StepCardProps) {
           </div>
         )}
       </div>
+
+      {isCollapsed && (
+        <div className="p-3 flex items-center justify-between border-t">
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <div className="bg-primary text-primary-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold flex-shrink-0">
+              {step.index + 1}
+            </div>
+            <p className="text-sm truncate">{step.caption || 'No caption'}</p>
+          </div>
+          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <Button
+              variant="secondary"
+              size="icon"
+              className="h-6 w-6 bg-background/80 backdrop-blur"
+              onClick={handleToggleCollapse}
+              aria-label="Expand step"
+            >
+              <ChevronDown className="h-3 w-3" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              onClick={() => setIsEditing(true)}
+              aria-label="Edit caption"
+            >
+              <Edit2 className="h-3 w-3" />
+            </Button>
+            <Button
+              variant="destructive"
+              size="icon"
+              className="h-6 w-6"
+              onClick={handleDelete}
+              aria-label="Delete step"
+            >
+              <Trash2 className="h-3 w-3" />
+            </Button>
+          </div>
+        </div>
+      )}
     </Card>
   );
 }

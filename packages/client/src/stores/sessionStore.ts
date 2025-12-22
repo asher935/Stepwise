@@ -13,6 +13,7 @@ interface SessionStore {
   isLoading: boolean;
   error: string | null;
   hoveredElement: ElementInfo | null;
+  collapsedStepIds: Set<string>;
 
   createSession: () => Promise<void>;
   startSession: (startUrl?: string) => Promise<void>;
@@ -25,6 +26,7 @@ interface SessionStore {
   setError: (error: string | null) => void;
   setSessionState: (state: SessionState | null) => void;
   setHoveredElement: (element: ElementInfo | null) => void;
+  toggleStepCollapsed: (stepId: string) => void;
   reset: () => void;
 
   initWebSocket: () => () => void;
@@ -40,6 +42,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   isLoading: false,
   error: null,
   hoveredElement: null,
+  collapsedStepIds: new Set<string>(),
 
   createSession: async () => {
     set({ isLoading: true, error: null });
@@ -146,6 +149,18 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     set({ hoveredElement: element });
   },
 
+  toggleStepCollapsed: (stepId: string) => {
+    set(state => {
+      const newCollapsed = new Set(state.collapsedStepIds);
+      if (newCollapsed.has(stepId)) {
+        newCollapsed.delete(stepId);
+      } else {
+        newCollapsed.add(stepId);
+      }
+      return { collapsedStepIds: newCollapsed };
+    });
+  },
+
   reset: () => {
     api.clearToken();
     set({
@@ -158,6 +173,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       isLoading: false,
       error: null,
       hoveredElement: null,
+      collapsedStepIds: new Set<string>(),
     });
   },
 
@@ -173,7 +189,14 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
           set({ currentFrame: `data:image/jpeg;base64,${message.data}` });
           break;
         case 'step:new':
-          set(state => ({ steps: [...state.steps, message.step] }));
+          set(state => {
+            const allStepIds = [...state.steps.map(s => s.id), message.step.id];
+            const previousStepIds = state.steps.map(s => s.id);
+            return {
+              steps: [...state.steps, message.step],
+              collapsedStepIds: new Set(previousStepIds)
+            };
+          });
           break;
         case 'step:updated':
           set(state => ({

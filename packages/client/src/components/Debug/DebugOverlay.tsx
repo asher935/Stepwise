@@ -55,6 +55,8 @@ function describeServerMessage(message: ServerMessage): string {
       return `rate:limited ${message.action}`;
     case 'session:unhealthy':
       return 'session:unhealthy';
+    case 'element:hover':
+      return `element:hover ${message.element?.tagName || 'null'}`;
     case 'error':
       return `error ${message.code}`;
     default: {

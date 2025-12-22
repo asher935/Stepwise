@@ -125,7 +125,6 @@ export function Viewport() {
       width: `${hoveredElement.boundingBox.width * scaleX}px`,
       height: `${hoveredElement.boundingBox.height * scaleY}px`,
       border: '2px solid rgba(59, 130, 246, 0.8)',
-      backgroundColor: 'rgba(59, 130, 246, 0.1)',
       pointerEvents: 'none',
       zIndex: 10,
     };

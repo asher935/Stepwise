@@ -14,6 +14,7 @@ interface SessionStore {
   error: string | null;
   hoveredElement: ElementInfo | null;
   collapsedStepIds: Set<string>;
+  guideTitle: string;
 
   createSession: () => Promise<void>;
   startSession: (startUrl?: string) => Promise<void>;
@@ -26,6 +27,7 @@ interface SessionStore {
   setError: (error: string | null) => void;
   setSessionState: (state: SessionState | null) => void;
   setHoveredElement: (element: ElementInfo | null) => void;
+  setGuideTitle: (title: string) => void;
   toggleStepCollapsed: (stepId: string) => void;
   reset: () => void;
 
@@ -43,6 +45,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   error: null,
   hoveredElement: null,
   collapsedStepIds: new Set<string>(),
+  guideTitle: 'Untitled Guide',
 
   createSession: async () => {
     set({ isLoading: true, error: null });
@@ -149,6 +152,10 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     set({ hoveredElement: element });
   },
 
+  setGuideTitle: (title: string) => {
+    set({ guideTitle: title });
+  },
+
   toggleStepCollapsed: (stepId: string) => {
     set(state => {
       const newCollapsed = new Set(state.collapsedStepIds);
@@ -174,6 +181,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       error: null,
       hoveredElement: null,
       collapsedStepIds: new Set<string>(),
+      guideTitle: 'Untitled Guide',
     });
   },
 

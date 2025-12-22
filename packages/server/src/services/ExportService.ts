@@ -4,10 +4,17 @@ import { chromium } from 'playwright-core';
 import { createWriteStream, readFileSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
-import type { ClickStep, HoverStep, ScrollStep, SelectStep, Step, TypeStep, ExportOptions, ExportResult, StepwiseManifest } from '@stepwise/shared';
+import sharp from 'sharp';
+import type { ClickStep, HoverStep, ScrollStep, SelectStep, Step, TypeStep, ExportOptions, ExportResult, ExportFormat, StepwiseManifest } from '@stepwise/shared';
 import type { ServerSession } from '../types/session.js';
 import { encrypt } from '../lib/crypto.js';
 import { env } from '../lib/env.js';
+
+/**
+ * Maximum image dimensions for DOCX export (in pixels, at 96 DPI)
+ */
+const MAX_IMAGE_WIDTH = 600;
+const MAX_IMAGE_HEIGHT = 400;
 
 /**
  * ExportService handles exporting sessions to various formats
@@ -176,6 +183,32 @@ export class ExportService {
   }
 
   /**
+   * Calculates image dimensions that fit within max bounds while preserving aspect ratio
+   */
+  private async calculateImageDimensions(imagePath: string): Promise<{ width: number; height: number }> {
+    const metadata = await sharp(imagePath).metadata();
+    const originalWidth = metadata.width ?? 600;
+    const originalHeight = metadata.height ?? 400;
+    const aspectRatio = originalWidth / originalHeight;
+
+    // Calculate dimensions that fit within MAX bounds
+    let width = originalWidth;
+    let height = originalHeight;
+
+    if (width > MAX_IMAGE_WIDTH) {
+      width = MAX_IMAGE_WIDTH;
+      height = Math.round(width / aspectRatio);
+    }
+
+    if (height > MAX_IMAGE_HEIGHT) {
+      height = MAX_IMAGE_HEIGHT;
+      width = Math.round(height * aspectRatio);
+    }
+
+    return { width, height };
+  }
+
+  /**
    * Exports to DOCX
    */
   private async exportDOCX(
@@ -213,14 +246,16 @@ export class ExportService {
       if (options.includeScreenshots !== false) {
         try {
           const imageBuffer = await readFile(step.screenshotPath);
+          const dimensions = await this.calculateImageDimensions(step.screenshotPath);
+
           children.push(
             new Paragraph({
               children: [
                 new ImageRun({
                   data: imageBuffer,
                   transformation: {
-                    width: 500,
-                    height: 312,
+                    width: dimensions.width,
+                    height: dimensions.height,
                   },
                   type: 'jpg',
                 }),
@@ -247,7 +282,7 @@ export class ExportService {
     const buffer = await Packer.toBuffer(doc);
     const filename = `${this.sanitizeFilename(title)}.docx`;
     const filepath = join(exportDir, filename);
-    
+
     await writeFile(filepath, buffer as any);
 
     return {

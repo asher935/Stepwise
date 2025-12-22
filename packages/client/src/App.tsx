@@ -9,6 +9,7 @@ import { useSessionStore } from '@/stores/sessionStore';
 export default function App() {
   const sessionState = useSessionStore((s) => s.sessionState);
   const token = useSessionStore((s) => s.token);
+  const setGuideTitle = useSessionStore((s) => s.setGuideTitle);
   const [showImport, setShowImport] = useState(false);
 
   const isActive = sessionState?.status === 'active';
@@ -29,7 +30,7 @@ export default function App() {
         ) : (
           <>
             <Lobby onImportClick={() => setShowImport(true)} />
-            <ImportModal open={showImport} onOpenChange={setShowImport} />
+            <ImportModal open={showImport} onOpenChange={setShowImport} setGuideTitle={setGuideTitle} />
           </>
         )}
       </div>

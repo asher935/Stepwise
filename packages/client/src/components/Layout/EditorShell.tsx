@@ -14,12 +14,13 @@ export function EditorShell() {
   const steps = useSessionStore((s) => s.steps);
   const sessionId = useSessionStore((s) => s.sessionId);
   const isConnected = useSessionStore((s) => s.isConnected);
+  const guideTitle = useSessionStore((s) => s.guideTitle);
+  const setGuideTitle = useSessionStore((s) => s.setGuideTitle);
 
   const [showExport, setShowExport] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [showFinish, setShowFinish] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [guideTitle, setGuideTitle] = useState('Untitled Guide');
 
   useEffect(() => {
     const cleanup = initWebSocket();

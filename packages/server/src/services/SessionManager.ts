@@ -156,6 +156,7 @@ class SessionManager {
           width: env.BROWSER_VIEWPORT_WIDTH,
           height: env.BROWSER_VIEWPORT_HEIGHT,
         },
+        ignoreHTTPSErrors: true,
       });
       await page.bringToFront();
 

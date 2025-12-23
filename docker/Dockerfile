@@ -3,24 +3,27 @@ FROM oven/bun:1-alpine AS builder
 
 WORKDIR /app
 
-# Copy package files
+# Copy package files and tsconfig
 COPY package.json bun.lock ./
+COPY tsconfig.base.json tsconfig.json ./
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/server/package.json ./packages/server/
 COPY packages/client/package.json ./packages/client/
 
-# Clean stale build artifacts
-RUN rm -rf packages/*/dist packages/*/tsconfig.tsbuildinfo
+# Install all dependencies (including devDependencies for build)
+RUN bun install --frozen-lockfile
 
-# Build shared 
-WORKDIR /app/packages/shared
-RUN bun run build
-
-# Copy source
-COPY tsconfig.base.json tsconfig.json ./
+# Copy source files
 COPY packages/shared ./packages/shared
 COPY packages/server ./packages/server
 COPY packages/client ./packages/client
+
+# Clean stale build artifacts
+RUN rm -rf packages/*/dist packages/*/tsconfig.tsbuildinfo
+
+# Build shared
+WORKDIR /app/packages/shared
+RUN bun run build
 
 # Build client
 WORKDIR /app/packages/client

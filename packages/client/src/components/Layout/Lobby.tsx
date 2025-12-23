@@ -55,7 +55,7 @@ export function Lobby({ onImportClick }: LobbyProps) {
               onChange={(e) => setUrl(e.target.value)}
               placeholder="Enter target website URL..."
               disabled={isLoading}
-              className="w-full bg-transparent border-none focus:ring-0 text-lg px-4 py-3 placeholder:text-[#BBAFA7] font-semibold text-[#2D241E] disabled:opacity-50"
+              className="w-full bg-transparent border-none focus:ring-0 focus:outline-none text-lg px-4 py-3 placeholder:text-[#BBAFA7] font-semibold text-[#2D241E] disabled:opacity-50"
             />
             <button
               type="submit"

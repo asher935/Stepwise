@@ -9,8 +9,12 @@ COPY packages/shared/package.json ./packages/shared/
 COPY packages/server/package.json ./packages/server/
 COPY packages/client/package.json ./packages/client/
 
-# Install dependencies
-RUN bun install --frozen-lockfile
+# Clean stale build artifacts
+RUN rm -rf packages/*/dist packages/*/tsconfig.tsbuildinfo
+
+# Build shared 
+WORKDIR /app/packages/shared
+RUN bun run build
 
 # Copy source
 COPY tsconfig.base.json tsconfig.json ./

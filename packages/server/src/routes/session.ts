@@ -173,45 +173,53 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
     '/:sessionId/steps/:stepId',
     async ({ params, headers, body }) => {
       const token = headers['authorization']?.replace('Bearer ', '');
-      
+
       if (!token || !sessionManager.validateToken(params.sessionId, token)) {
-        return { 
-          success: false, 
-          error: { 
-            code: ERROR_CODES.INVALID_TOKEN, 
-            message: 'Invalid or missing token' 
-          } 
+        return {
+          success: false,
+          error: {
+            code: ERROR_CODES.INVALID_TOKEN,
+            message: 'Invalid or missing token'
+          }
         };
       }
-      
+
       const session = sessionManager.getSession(params.sessionId);
       if (!session) {
-        return { 
-          success: false, 
-          error: { 
-            code: ERROR_CODES.SESSION_NOT_FOUND, 
-            message: 'Session not found' 
-          } 
+        return {
+          success: false,
+          error: {
+            code: ERROR_CODES.SESSION_NOT_FOUND,
+            message: 'Session not found'
+          }
         };
       }
-      
-      const step = session.steps.find(s => s.id === params.stepId);
-      if (!step) {
-        return { 
-          success: false, 
-          error: { 
-            code: ERROR_CODES.STEP_NOT_FOUND, 
-            message: 'Step not found' 
-          } 
+
+      const stepIndex = session.steps.findIndex(s => s.id === params.stepId);
+      if (stepIndex === -1) {
+        return {
+          success: false,
+          error: {
+            code: ERROR_CODES.STEP_NOT_FOUND,
+            message: 'Step not found'
+          }
         };
       }
-      
+
+      const step = session.steps[stepIndex]!;
+
+      // Create a new step object with the updated caption to ensure reactivity
+      const updatedStep = { ...step };
+
       if (body.caption !== undefined) {
-        step.caption = body.caption;
-        step.isEdited = true;
+        updatedStep.caption = body.caption;
+        updatedStep.isEdited = true;
       }
-      
-      return { success: true, data: step };
+
+      // Update the session's step reference
+      session.steps[stepIndex] = updatedStep;
+
+      return { success: true, data: updatedStep };
     },
     {
       params: t.Object({

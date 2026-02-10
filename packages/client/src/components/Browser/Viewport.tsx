@@ -4,7 +4,6 @@
 import { useCallback, useRef } from 'react';
 
 import { DEFAULTS } from '@stepwise/shared';
-import type { ElementInfo } from '@stepwise/shared';
 
 import { translateClientToBrowser } from '@/lib/coords';
 import { wsClient } from '@/lib/ws';
@@ -15,12 +14,21 @@ const BROWSER_DIMENSIONS = {
   height: DEFAULTS.BROWSER_VIEWPORT_HEIGHT,
 };
 
+function hexToRgba(hex: string, alpha: number): string {
+  const normalized = hex.replace('#', '');
+  const r = parseInt(normalized.slice(0, 2), 16);
+  const g = parseInt(normalized.slice(2, 4), 16);
+  const b = parseInt(normalized.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 export function Viewport() {
   const containerRef = useRef<HTMLElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
   const currentFrame = useSessionStore((s) => s.currentFrame);
   const isConnected = useSessionStore((s) => s.isConnected);
   const hoveredElement = useSessionStore((s) => s.hoveredElement);
+  const stepHighlightColor = useSessionStore((s) => s.stepHighlightColor);
 
   const getViewportRect = useCallback((): DOMRect | null => {
     return imageRef.current?.getBoundingClientRect() ?? null;
@@ -124,12 +132,12 @@ export function Viewport() {
       top: `${hoveredElement.boundingBox.y * scaleY}px`,
       width: `${hoveredElement.boundingBox.width * scaleX}px`,
       height: `${hoveredElement.boundingBox.height * scaleY}px`,
-      border: '2px solid rgba(230, 126, 34, 0.8)',
+      border: `2px solid ${hexToRgba(stepHighlightColor, 0.8)}`,
       pointerEvents: 'none',
       zIndex: 10,
       borderRadius: '4px',
     };
-  }, [hoveredElement]);
+  }, [hoveredElement, stepHighlightColor]);
 
   if (!isConnected || !currentFrame) {
     return (

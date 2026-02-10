@@ -1,47 +1,62 @@
 import { useState, useCallback, useEffect } from 'react';
-import { X, Download, Check, Edit3 } from 'lucide-react';
+import { X, Download, Check, Edit3, Image as ImageIcon, Eye, EyeOff } from 'lucide-react';
 import { createPortal } from 'react-dom';
 
-interface ScreenshotModalProps {
+interface EditStepModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  screenshotDataUrl: string;
+  screenshotDataUrl?: string;
+  originalScreenshotDataUrl?: string;
   stepNumber: number;
   caption: string;
   onSaveCaption: (caption: string) => Promise<void>;
+  onToggleRedaction?: (redact: boolean) => Promise<string | undefined>;
+  isTypeStep?: boolean;
+  isRedacted?: boolean;
 }
 
-export function ScreenshotModal({ open, onOpenChange, screenshotDataUrl, stepNumber, caption, onSaveCaption }: ScreenshotModalProps) {
+export function EditStepModal({ open, onOpenChange, screenshotDataUrl, originalScreenshotDataUrl, stepNumber, caption, onSaveCaption, onToggleRedaction, isTypeStep, isRedacted }: EditStepModalProps) {
   const [editedCaption, setEditedCaption] = useState(caption);
   const [isSaving, setIsSaving] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [redactEnabled, setRedactEnabled] = useState(isRedacted ?? false);
+  const [isTogglingRedaction, setIsTogglingRedaction] = useState(false);
+  const [originalScreenshotUrl, setOriginalScreenshotUrl] = useState(screenshotDataUrl);
+  const [redactedScreenshotUrl, setRedactedScreenshotUrl] = useState<string | undefined>(undefined);
 
-  // Close modal on ESC key press
   useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && open) {
-        if (isEditing) {
-          setIsEditing(false);
-          setEditedCaption(caption);
-        } else {
-          onOpenChange(false);
-        }
-      }
-    };
+    setRedactEnabled(isRedacted ?? false);
+  }, [isRedacted]);
 
-    document.addEventListener('keydown', handleEscape);
-    return () => document.removeEventListener('keydown', handleEscape);
+  useEffect(() => {
+    // Use originalScreenshotDataUrl if available (when redaction is enabled),
+    // otherwise fall back to screenshotDataUrl
+    setOriginalScreenshotUrl(originalScreenshotDataUrl ?? screenshotDataUrl);
+  }, [screenshotDataUrl, originalScreenshotDataUrl]);
+
+  const handleEscape = useCallback((e: KeyboardEvent) => {
+    if (e.key === 'Escape' && open) {
+      if (isEditing) {
+        setIsEditing(false);
+        setEditedCaption(caption);
+      } else {
+        onOpenChange(false);
+      }
+    }
   }, [open, onOpenChange, isEditing, caption]);
 
-  // Reset edit mode when modal opens, and sync editedCaption when caption changes
+  useEffect(() => {
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [handleEscape]);
+
   useEffect(() => {
     if (open) {
       setIsEditing(false);
       setEditedCaption(caption);
     }
-  }, [open]);
+  }, [open, caption]);
 
-  // Sync editedCaption when caption prop changes (e.g., after save)
   useEffect(() => {
     if (!isEditing) {
       setEditedCaption(caption);
@@ -49,8 +64,10 @@ export function ScreenshotModal({ open, onOpenChange, screenshotDataUrl, stepNum
   }, [caption, isEditing]);
 
   const handleDownload = () => {
+    const urlToDownload = redactedScreenshotUrl || originalScreenshotUrl;
+    if (!urlToDownload) return;
     const a = document.createElement('a');
-    a.href = screenshotDataUrl;
+    a.href = urlToDownload;
     a.download = `step-${stepNumber}-capture.png`;
     document.body.appendChild(a);
     a.click();
@@ -83,13 +100,32 @@ export function ScreenshotModal({ open, onOpenChange, screenshotDataUrl, stepNum
     }
   }, [handleSaveCaption]);
 
+  const handleToggleRedaction = useCallback(async () => {
+    if (!onToggleRedaction) return;
+
+    setIsTogglingRedaction(true);
+    try {
+      const newValue = !redactEnabled;
+      const newScreenshotUrl = await onToggleRedaction(newValue);
+      setRedactEnabled(newValue);
+      setRedactedScreenshotUrl(newScreenshotUrl);
+    } catch (error) {
+      console.error('Failed to toggle redaction:', error);
+      setRedactEnabled(redactEnabled);
+    } finally {
+      setIsTogglingRedaction(false);
+    }
+  }, [onToggleRedaction, redactEnabled]);
+
   if (!open) return null;
 
   return createPortal(
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-      <div
+      <button
+        type="button"
         className="absolute inset-0 bg-[#2D241E]/20 backdrop-blur-md animate-in fade-in duration-500"
         onClick={() => onOpenChange(false)}
+        aria-label="Close modal"
       />
 
       <div className="relative w-full max-w-5xl bg-white/90 backdrop-blur-3xl border border-white rounded-[48px] overflow-hidden shadow-[0_40px_100px_rgba(45,36,30,0.15)] animate-in zoom-in-95 duration-500">
@@ -105,6 +141,7 @@ export function ScreenshotModal({ open, onOpenChange, screenshotDataUrl, stepNum
             </div>
             <div className="flex items-center space-x-2">
               <button
+                type="button"
                 onClick={handleDownload}
                 className="w-12 h-12 flex items-center justify-center bg-white hover:bg-[#FDF2E9] border border-black/5 rounded-full transition-all active:scale-90 shadow-sm"
                 title="Download screenshot"
@@ -112,6 +149,7 @@ export function ScreenshotModal({ open, onOpenChange, screenshotDataUrl, stepNum
                 <Download size={20} className="text-[#BBAFA7]" />
               </button>
               <button
+                type="button"
                 onClick={() => onOpenChange(false)}
                 className="w-12 h-12 flex items-center justify-center bg-white hover:bg-[#FDF2E9] border border-black/5 rounded-full transition-all active:scale-90 shadow-sm"
               >
@@ -121,9 +159,9 @@ export function ScreenshotModal({ open, onOpenChange, screenshotDataUrl, stepNum
           </div>
 
           <div className="space-y-3">
-            <label className="text-[10px] font-black text-[#BBAFA7] uppercase tracking-widest ml-4">
+            <div className="text-[10px] font-black text-[#BBAFA7] uppercase tracking-widest ml-4">
               Step Label
-            </label>
+            </div>
             {isEditing ? (
               <div className="relative">
                 <textarea
@@ -191,12 +229,74 @@ export function ScreenshotModal({ open, onOpenChange, screenshotDataUrl, stepNum
             )}
           </div>
 
-          <div className="relative bg-[#FDF2E9] rounded-[32px] overflow-hidden border border-black/5">
-            <img
-              src={screenshotDataUrl}
-              alt={`Step ${stepNumber} screenshot`}
-              className="w-full h-auto"
-            />
+          {isTypeStep && (
+            <div className="space-y-3">
+              <div className="text-[10px] font-black text-[#BBAFA7] uppercase tracking-widest ml-4">
+                Privacy
+              </div>
+              <div className="relative bg-[#FDF2E9] border border-black/5 rounded-[24px] py-4 px-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    <button
+                      type="button"
+                      className={`
+                        w-12 h-7 rounded-full transition-colors duration-200 relative
+                        ${redactEnabled ? 'bg-[#E67E22]' : 'bg-[#BBAFA7]'}
+                      `}
+                      onClick={handleToggleRedaction}
+                      role="switch"
+                      aria-checked={redactEnabled}
+                      aria-label="Toggle redaction"
+                    >
+                      <div className={`
+                        w-5 h-5 rounded-full bg-white shadow-md transition-all duration-200 absolute top-1
+                        ${redactEnabled ? 'left-6' : 'left-1'}
+                      `}
+                      />
+                    </button>
+                    <div className="flex flex-col">
+                      <span className="text-sm font-bold text-[#2D241E]">Redact input field</span>
+                      {isTogglingRedaction && (
+                        <span className="text-[9px] text-[#E67E22] font-black uppercase tracking-wider">
+                          Generating redacted image...
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  {redactEnabled ? (
+                    <EyeOff size={20} className="text-[#BBAFA7]" />
+                  ) : (
+                    <Eye size={20} className="text-[#E67E22]" />
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="relative bg-[#FDF2E9] rounded-[32px] overflow-hidden border border-black/5 min-h-[300px]">
+            {originalScreenshotUrl ? (
+              <div className="relative">
+                <img
+                  src={redactEnabled && redactedScreenshotUrl ? redactedScreenshotUrl : originalScreenshotUrl}
+                  alt={`Step ${stepNumber} screenshot`}
+                  className="w-full h-auto"
+                />
+                {isTypeStep && redactEnabled && (
+                  <div className="absolute top-4 right-4">
+                    <div className="bg-black/70 backdrop-blur-sm px-3 py-2 rounded-full text-white shadow-lg flex items-center space-x-2">
+                      <EyeOff size={16} />
+                      <span className="text-xs font-bold uppercase tracking-wider">Redacted</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="w-full h-[300px] flex flex-col items-center justify-center text-[#BBAFA7]">
+                <ImageIcon size={48} className="mb-4 opacity-50" />
+                <span className="text-sm font-bold">No screenshot captured</span>
+                <span className="text-xs mt-1">This step was manually inserted</span>
+              </div>
+            )}
           </div>
         </div>
       </div>

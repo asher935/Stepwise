@@ -1,11 +1,14 @@
 /** Session lifecycle states */
-export type SessionStatus = 
+export type SessionStatus =
   | 'lobby'
   | 'starting'
   | 'active'
   | 'ending'
   | 'closed'
   | 'failed';
+
+/** Session operation mode */
+export type SessionMode = 'record' | 'replay';
 
 /** Client-facing session state */
 export interface SessionState {
@@ -28,4 +31,30 @@ export interface CreateSessionRequest {
 export interface CreateSessionResponse {
   sessionId: string;
   token: string;
+}
+
+/** Replay lifecycle states */
+export type ReplayState =
+  | 'idle'
+  | 'playing'
+  | 'paused'
+  | 'error'
+  | 'completed';
+
+/** Options for controlling replay behavior */
+export interface ReplayOptions {
+  /** Step index to start replay from (default: 0) */
+  startStepIndex?: number;
+  /** Playback speed multiplier (default: 1) */
+  speed: number;
+  /** Whether to pause on errors (default: false) */
+  stopOnError: boolean;
+}
+
+/** Current replay status */
+export interface ReplayStatus {
+  state: ReplayState;
+  currentStepIndex: number;
+  totalSteps: number;
+  error?: string;
 }

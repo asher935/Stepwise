@@ -1,8 +1,6 @@
-import type { 
-  ClientMessage, 
+import type {
+  ClientMessage,
   ServerMessage,
-  SessionState,
-  Step,
 } from '@stepwise/shared';
 
 type MessageHandler = (message: ServerMessage) => void;
@@ -41,7 +39,7 @@ class WebSocketClient {
     this.ws = new WebSocket(url);
 
     this.ws.onopen = () => {
-      console.log('[WS] Connected');
+      console.warn('[WS] Connected');
       this.reconnectAttempts = 0;
       this.startPing();
       this.connectHandlers.forEach(h => { h(); });
@@ -57,7 +55,7 @@ class WebSocketClient {
     };
 
     this.ws.onclose = () => {
-      console.log('[WS] Disconnected');
+      console.warn('[WS] Disconnected');
       this.stopPing();
       this.disconnectHandlers.forEach(h => { h(); });
       this.attemptReconnect();
@@ -70,15 +68,15 @@ class WebSocketClient {
 
   private attemptReconnect(): void {
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      console.log('[WS] Max reconnect attempts reached');
+      console.warn('[WS] Max reconnect attempts reached');
       return;
     }
 
     this.reconnectAttempts++;
     const delay = this.reconnectDelay * (2 ** (this.reconnectAttempts - 1));
-    
-    console.log(`[WS] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`);
-    
+
+    console.warn(`[WS] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`);
+
     setTimeout(() => {
       this.doConnect();
     }, delay);
@@ -195,6 +193,10 @@ class WebSocketClient {
 
   reload(): void {
     this.send({ type: 'navigate', action: 'reload' });
+  }
+
+  setHighlightColor(color: string): void {
+    this.send({ type: 'settings:highlight', color });
   }
 }
 

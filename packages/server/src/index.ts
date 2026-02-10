@@ -12,13 +12,14 @@ import { sessionManager } from './services/SessionManager.js';
 import type { WSConnection } from './types/session.js';
 import { handleClose, handleMessage, handleOpen, notifySessionStarted } from './ws/handler.js';
 
-console.log(`[Server] Starting Stepwise server...`);
-console.log(`[Server] Environment: ${env.NODE_ENV}`);
-console.log(`[Server] Max sessions: ${env.MAX_SESSIONS}`);
+// Server startup information logged via console.warn for development tracking
+console.warn(`[Server] Starting Stepwise server...`);
+console.warn(`[Server] Environment: ${env.NODE_ENV}`);
+console.warn(`[Server] Max sessions: ${env.MAX_SESSIONS}`);
 
 const clientDistPath = join(import.meta.dir, '..', '..', 'client', 'dist');
 if (env.NODE_ENV === 'production') {
-  console.log(`[Server] Static files path: ${clientDistPath}`);
+  console.warn(`[Server] Static files path: ${clientDistPath}`);
 }
 
 const app = new Elysia()
@@ -41,20 +42,33 @@ const app = new Elysia()
   
   .ws('/ws', {
     open(ws) {
-      const raw = (ws as { raw?: ServerWebSocket<WSConnection> }).raw ?? (ws as unknown as ServerWebSocket<WSConnection>);
-      const query = raw.data.query as { sessionId: string; token: string };
-      raw.data.sessionId = query.sessionId;
-      raw.data.token = query.token;
-      raw.data.lastPingAt = Date.now();
-      handleOpen(raw);
+      const elysiaWs = ws as unknown as ServerWebSocket<WSConnection> & {
+        data: WSConnection & { query?: { sessionId?: string; token?: string } };
+      };
+
+      const sessionId = elysiaWs.data.query?.sessionId;
+      const token = elysiaWs.data.query?.token;
+
+      if (!sessionId || !token) {
+        elysiaWs.close(1008, 'Missing sessionId or token');
+        return;
+      }
+
+      elysiaWs.data = {
+        sessionId,
+        token,
+        lastPingAt: Date.now(),
+      };
+
+      void handleOpen(elysiaWs);
     },
     message(ws, message) {
-      const raw = (ws as { raw?: ServerWebSocket<WSConnection> }).raw ?? (ws as unknown as ServerWebSocket<WSConnection>);
-      handleMessage(raw, message);
+      const elysiaWs = ws as unknown as ServerWebSocket<WSConnection>;
+      void handleMessage(elysiaWs, message);
     },
     close(ws) {
-      const raw = (ws as { raw?: ServerWebSocket<WSConnection> }).raw ?? (ws as unknown as ServerWebSocket<WSConnection>);
-      handleClose(raw);
+      const elysiaWs = ws as unknown as ServerWebSocket<WSConnection>;
+      void handleClose(elysiaWs);
     },
   });
 
@@ -82,23 +96,27 @@ app.onError(({ error, code }) => {
 });
 
 sessionManager.on('session:started', (sessionId) => {
-  notifySessionStarted(sessionId);
+  void notifySessionStarted(sessionId);
 });
 
 async function shutdown(): Promise<void> {
-  console.log('[Server] Shutting down...');
+  console.warn('[Server] Shutting down...');
   await sessionManager.shutdown();
-  console.log('[Server] Shutdown complete');
+  console.warn('[Server] Shutdown complete');
   process.exit(0);
 }
 
-process.on('SIGINT', shutdown);
-process.on('SIGTERM', shutdown);
+process.on('SIGINT', () => {
+  void shutdown();
+});
+process.on('SIGTERM', () => {
+  void shutdown();
+});
 
 app.listen(env.PORT);
 
-console.log(`[Server] Stepwise server running on http://localhost:${env.PORT}`);
-console.log(`[Server] WebSocket endpoint: ws://localhost:${env.PORT}/ws`);
-console.log(`[Server] Health check: http://localhost:${env.PORT}/api/health`);
+console.warn(`[Server] Stepwise server running on http://localhost:${env.PORT}`);
+console.warn(`[Server] WebSocket endpoint: ws://localhost:${env.PORT}/ws`);
+console.warn(`[Server] Health check: http://localhost:${env.PORT}/api/health`);
 
 export type App = typeof app;

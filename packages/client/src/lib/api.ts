@@ -48,13 +48,15 @@ class ApiClient {
       body: body ? JSON.stringify(body) : undefined,
     });
 
-    const result = await response.json() as ApiResponse<T>;
+    const raw = await response.text();
+    const parsed = raw.length > 0 ? JSON.parse(raw) as ApiResponse<T> : null;
+    const result = parsed ?? { success: response.ok };
 
-    if (!result.success || !result.data) {
+    if (!response.ok || !result.success) {
       throw new Error(result.error?.message ?? 'Request failed');
     }
 
-    return result.data;
+    return result.data as T;
   }
 
   async createSession(): Promise<{ sessionId: string; token: string }> {
@@ -80,9 +82,17 @@ class ApiClient {
   async updateStep(
     sessionId: string,
     stepId: string,
-    updates: { caption?: string }
+    updates: { caption?: string; redactScreenshot?: boolean; redactedScreenshotPath?: string }
   ): Promise<Step> {
     return this.request('PATCH', `/sessions/${sessionId}/steps/${stepId}`, updates);
+  }
+
+  async toggleRedaction(
+    sessionId: string,
+    stepId: string,
+    redact: boolean
+  ): Promise<{ redactedScreenshotPath: string | null; screenshotDataUrl: string | null }> {
+    return this.request('POST', `/sessions/${sessionId}/steps/${stepId}/redact`, { redact });
   }
 
   async deleteStep(sessionId: string, stepId: string): Promise<void> {

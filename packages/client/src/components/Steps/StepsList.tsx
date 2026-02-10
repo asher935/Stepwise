@@ -1,6 +1,8 @@
+import React from 'react';
 import { Zap } from 'lucide-react';
 import { useSessionStore } from '@/stores/sessionStore';
 import { StepCard } from './StepCard';
+import { StepInsertionPoint } from './StepInsertionPoint';
 
 export function StepsList() {
   const steps = useSessionStore((s) => s.steps);
@@ -20,9 +22,13 @@ export function StepsList() {
 
   return (
     <div className="flex flex-col space-y-2">
-      {steps.map((step) => (
-        <StepCard key={step.id} step={step} />
+      {steps.map((step, index) => (
+        <React.Fragment key={step.id}>
+          {index > 0 && <StepInsertionPoint index={index} />}
+          <StepCard step={step} />
+        </React.Fragment>
       ))}
+      {steps.length > 0 && <StepInsertionPoint index={steps.length} />}
     </div>
   );
 }

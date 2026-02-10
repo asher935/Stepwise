@@ -1,11 +1,12 @@
 import { Elysia, t } from 'elysia';
+import type { TypeStep } from '@stepwise/shared';
 import { sessionManager } from '../services/SessionManager.js';
 import { ERROR_CODES } from '@stepwise/shared';
 
 export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
   .post(
     '/',
-    async ({ body }) => {
+    async () => {
       try {
         const { sessionId, token } = await sessionManager.createSession();
         return { 
@@ -208,7 +209,6 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
 
       const step = session.steps[stepIndex]!;
 
-      // Create a new step object with the updated caption to ensure reactivity
       const updatedStep = { ...step };
 
       if (body.caption !== undefined) {
@@ -216,7 +216,14 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
         updatedStep.isEdited = true;
       }
 
-      // Update the session's step reference
+      if (body.redactScreenshot !== undefined) {
+        (step as TypeStep & { redactScreenshot?: boolean }).redactScreenshot = body.redactScreenshot;
+      }
+
+      if (body.redactedScreenshotPath !== undefined) {
+        (step as TypeStep & { redactedScreenshotPath?: string }).redactedScreenshotPath = body.redactedScreenshotPath;
+      }
+
       session.steps[stepIndex] = updatedStep;
 
       return { success: true, data: updatedStep };
@@ -228,6 +235,68 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
       }),
       body: t.Object({
         caption: t.Optional(t.String()),
+        redactScreenshot: t.Optional(t.Boolean()),
+        redactedScreenshotPath: t.Optional(t.String()),
+      }),
+    }
+  )
+
+  .post(
+    '/:sessionId/steps/:stepId/redact',
+    async ({ params, headers, body }) => {
+      const token = headers['authorization']?.replace('Bearer ', '');
+
+      if (!token || !sessionManager.validateToken(params.sessionId, token)) {
+        return {
+          success: false,
+          error: {
+            code: ERROR_CODES.INVALID_TOKEN,
+            message: 'Invalid or missing token'
+          }
+        };
+      }
+
+      const session = sessionManager.getSession(params.sessionId);
+      if (!session) {
+        return {
+          success: false,
+          error: {
+            code: ERROR_CODES.SESSION_NOT_FOUND,
+            message: 'Session not found'
+          }
+        };
+      }
+
+      try {
+        const result = await sessionManager.toggleRedaction(
+          params.sessionId,
+          params.stepId,
+          body.redact
+        );
+        return {
+          success: true,
+          data: result
+        };
+      } catch (error) {
+        if (error instanceof Error) {
+          return {
+            success: false,
+            error: {
+              code: ERROR_CODES.STEP_NOT_FOUND,
+              message: error.message
+            }
+          };
+        }
+        throw error;
+      }
+    },
+    {
+      params: t.Object({
+        sessionId: t.String(),
+        stepId: t.String(),
+      }),
+      body: t.Object({
+        redact: t.Boolean(),
       }),
     }
   )

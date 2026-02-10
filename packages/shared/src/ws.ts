@@ -6,7 +6,12 @@ export type ClientMessageType =
   | 'input:keyboard'
   | 'input:scroll'
   | 'navigate'
-  | 'ping';
+  | 'settings:highlight'
+  | 'ping'
+  | 'replay:start'
+  | 'replay:pause'
+  | 'replay:resume'
+  | 'replay:stop';
 
 /** Mouse input message */
 export interface MouseInputMessage {
@@ -55,13 +60,33 @@ export interface PingMessage {
   timestamp: number;
 }
 
+/** Highlight settings message */
+export interface HighlightSettingsMessage {
+  type: 'settings:highlight';
+  color: string;
+}
+
+/** Replay start message */
+export interface ReplayStartMessage {
+  type: 'replay:start';
+  options?: import('./session.js').ReplayOptions;
+}
+
+/** Replay control message */
+export interface ReplayControlMessage {
+  type: 'replay:pause' | 'replay:resume' | 'replay:stop';
+}
+
 /** Client-to-server messages union */
 export type ClientMessage =
   | MouseInputMessage
   | KeyboardInputMessage
   | ScrollInputMessage
   | NavigateMessage
-  | PingMessage;
+  | HighlightSettingsMessage
+  | PingMessage
+  | ReplayStartMessage
+  | ReplayControlMessage;
 
 /** Element information for hover highlighting */
 export interface ElementInfo {
@@ -84,7 +109,11 @@ export type ServerMessageType =
   | 'input:error'
   | 'rate:limited'
   | 'session:unhealthy'
-  | 'element:hover';
+  | 'element:hover'
+  | 'replay:status'
+  | 'replay:step:start'
+  | 'replay:step:complete'
+  | 'replay:error';
 
 /** Screencast frame message */
 export interface FrameMessage {
@@ -135,7 +164,7 @@ export interface CDPErrorMessage {
   type: 'cdp:error';
   code: string;
   message: string;
-  context?: Record<string, any>;
+  context?: Record<string, unknown>;
 }
 
 export interface InputErrorMessage {
@@ -163,6 +192,33 @@ export interface ElementHoverMessage {
   element: ElementInfo | null;
 }
 
+/** Replay status message */
+export interface ReplayStatusMessage {
+  type: 'replay:status';
+  status: import('./session.js').ReplayStatus;
+}
+
+/** Replay step start message */
+export interface ReplayStepStartMessage {
+  type: 'replay:step:start';
+  stepIndex: number;
+  stepId: string;
+}
+
+/** Replay step complete message */
+export interface ReplayStepCompleteMessage {
+  type: 'replay:step:complete';
+  stepIndex: number;
+  stepId: string;
+}
+
+/** Replay error message */
+export interface ReplayErrorMessage {
+  type: 'replay:error';
+  stepId?: string;
+  error: string;
+}
+
 /** Server-to-client messages union */
 export type ServerMessage =
   | FrameMessage
@@ -176,4 +232,8 @@ export type ServerMessage =
   | InputErrorMessage
   | RateLimitedMessage
   | SessionUnhealthyMessage
-  | ElementHoverMessage;
+  | ElementHoverMessage
+  | ReplayStatusMessage
+  | ReplayStepStartMessage
+  | ReplayStepCompleteMessage
+  | ReplayErrorMessage;

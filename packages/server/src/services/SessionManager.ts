@@ -1,13 +1,13 @@
-import { chromium, type Browser, type Page, type CDPSession } from 'playwright-core';
-import { nanoid } from 'nanoid';
+import { chromium } from 'playwright-core';
 import { mkdir, rm } from 'fs/promises';
 import { join } from 'path';
-import type { SessionState } from '@stepwise/shared';
+import type { SessionState, SessionMode, TypeStep } from '@stepwise/shared';
 import type { ServerSession, CreateSessionOptions } from '../types/session.js';
 import { env } from '../lib/env.js';
 import { generateToken, generateSessionId } from '../lib/crypto.js';
+import { redactionService } from './RedactionService.js';
 
-type SessionEventType = 
+type SessionEventType =
   | 'session:created'
   | 'session:started'
   | 'session:ended'
@@ -16,7 +16,7 @@ type SessionEventType =
 
 type SessionEventHandler = (sessionId: string, data?: unknown) => void;
 
-class SessionManager {
+export class SessionManager {
   private sessions: Map<string, ServerSession> = new Map();
   private eventHandlers: Map<SessionEventType, Set<SessionEventHandler>> = new Map();
   private cleanupInterval: ReturnType<typeof setInterval> | null = null;
@@ -41,8 +41,8 @@ class SessionManager {
     const now = Date.now();
     for (const [id, session] of this.sessions) {
       if (now - session.lastActivityAt > env.IDLE_TIMEOUT_MS) {
-        console.log(`[SessionManager] Cleaning up idle session: ${id}`);
-        await this.endSession(id, 'timeout');
+        console.warn(`[SessionManager] Cleaning up idle session: ${id}`);
+        void this.endSession(id, 'timeout');
       }
     }
   }
@@ -83,7 +83,7 @@ class SessionManager {
   /**
    * Creates a new session
    */
-  async createSession(options: CreateSessionOptions = {}): Promise<{ sessionId: string; token: string }> {
+  async createSession(_options: CreateSessionOptions = {}): Promise<{ sessionId: string; token: string }> {
     // Check session limit
     if (this.sessions.size >= env.MAX_SESSIONS) {
       throw new Error('SESSION_LIMIT_REACHED');
@@ -101,6 +101,7 @@ class SessionManager {
       id: sessionId,
       token,
       status: 'lobby',
+      mode: 'record' as const,
       browser: null,
       page: null,
       cdp: null,
@@ -251,10 +252,73 @@ class SessionManager {
     if (session) {
       session.healthStatus = status;
       session.lastHealthCheck = lastHealthCheck;
-      
+
       if (status === 'unhealthy') {
         console.warn(`[SessionManager] Session ${sessionId} marked as unhealthy`);
       }
+    }
+  }
+
+  /**
+   * Sets the session mode
+   */
+  setMode(sessionId: string, mode: SessionMode): void {
+    const session = this.sessions.get(sessionId);
+    if (session) {
+      session.mode = mode;
+    }
+  }
+
+  /**
+   * Gets session mode
+   */
+  getMode(sessionId: string): SessionMode {
+    const session = this.sessions.get(sessionId);
+    return session?.mode ?? 'record';
+  }
+
+  /**
+   * Toggles redaction for a step
+   */
+  async toggleRedaction(sessionId: string, stepId: string, enable: boolean): Promise<{ redactedScreenshotPath: string | null; screenshotDataUrl: string | null }> {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      throw new Error('SESSION_NOT_FOUND');
+    }
+
+    const step = session.steps.find((s) => s.id === stepId);
+    if (!step || step.action !== 'type') {
+      throw new Error('STEP_NOT_FOUND_OR_NOT_TYPE_STEP');
+    }
+
+    const typeStep = step as TypeStep;
+
+    if (enable) {
+      const redactionRect = redactionService.getRedactionRect(typeStep);
+      if (!redactionRect) {
+        throw new Error('CANNOT_DETERMINE_REDACTION_AREA');
+      }
+
+      const redactedPath = typeStep.screenshotPath.replace(/\.(png|jpg)$/, '.redacted.$1');
+      await redactionService.generateRedactedScreenshot(
+        typeStep.screenshotPath,
+        redactionRect,
+        redactedPath
+      );
+
+      typeStep.redactScreenshot = true;
+      typeStep.redactedScreenshotPath = redactedPath;
+
+      const mimeType = env.SCREENSHOT_FORMAT === 'png' ? 'image/png' : 'image/jpeg';
+      const redactedBuffer = await import('node:fs/promises').then(fs => fs.readFile(redactedPath));
+      const screenshotDataUrl = `data:${mimeType};base64,${redactedBuffer.toString('base64')}`;
+
+      return { redactedScreenshotPath: redactedPath, screenshotDataUrl };
+    } else {
+      typeStep.redactScreenshot = false;
+      typeStep.redactedScreenshotPath = undefined;
+
+      return { redactedScreenshotPath: null, screenshotDataUrl: null };
     }
   }
 

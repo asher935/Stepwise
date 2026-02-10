@@ -70,7 +70,7 @@ export class ImportService {
         ?? parsed.screenshots.get(filename);
 
       if (screenshotBuffer) {
-        await writeFile(newPath, screenshotBuffer as any);
+        await writeFile(newPath, new Uint8Array(screenshotBuffer));
       }
 
       updatedSteps.push({
@@ -112,11 +112,11 @@ export class ImportService {
           const type = entry.type;
 
           if (type === 'File') {
-            const chunks: any[] = [];
-            
-            entry.on('data', (chunk: Buffer) => chunks.push(chunk));
+            const chunks: Uint8Array[] = [];
+
+            entry.on('data', (chunk: Buffer) => chunks.push(new Uint8Array(chunk)));
             entry.on('end', () => {
-              const content = Buffer.concat(chunks);
+              const content = Buffer.from(Uint8Array.from(chunks.flat()));
 
               if (path === 'manifest.json') {
                 try {

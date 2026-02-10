@@ -9,6 +9,8 @@ import { useSessionStore } from '@/stores/sessionStore';
 export function Toolbar() {
   const sessionState = useSessionStore((s) => s.sessionState);
   const isConnected = useSessionStore((s) => s.isConnected);
+  const stepHighlightColor = useSessionStore((s) => s.stepHighlightColor);
+  const setStepHighlightColor = useSessionStore((s) => s.setStepHighlightColor);
   const [urlInput, setUrlInput] = useState(sessionState?.url ?? '');
   const [isNavigating, setIsNavigating] = useState(false);
 
@@ -97,6 +99,20 @@ export function Toolbar() {
       </div>
 
       {/* Viewport Dimensions */}
+      <div className="flex items-center gap-2">
+        <span className="text-[10px] font-black uppercase tracking-wider text-[#BBAFA7]">
+          Highlight
+        </span>
+        <label className="w-8 h-8 rounded-full border border-black/10 bg-white overflow-hidden shadow-sm cursor-pointer">
+          <input
+            type="color"
+            value={stepHighlightColor}
+            onChange={(e) => setStepHighlightColor(e.target.value)}
+            className="w-full h-full border-0 p-0 cursor-pointer"
+            aria-label="Step highlight color"
+          />
+        </label>
+      </div>
     </div>
   );
 }

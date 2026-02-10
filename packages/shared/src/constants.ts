@@ -11,6 +11,7 @@ export const DEFAULTS = {
   SCREENSHOT_FORMAT: 'png' as 'png' | 'jpeg',
   SCREENCAST_MAX_FPS: 15,
   SESSION_TOKEN_BYTES: 32,
+  TYPING_DEBOUNCE_MS: 500,
 } as const;
 
 /** API endpoints */

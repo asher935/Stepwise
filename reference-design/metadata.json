@@ -1,0 +1,8 @@
+{
+  "name": "Stepwise",
+  "description": "A privacy-first browser automation and step-by-step guide creator with zero-storage local processing.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}

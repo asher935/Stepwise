@@ -7,9 +7,10 @@
   "scripts": {
     "dev": "bun --watch src/index.ts",
     "start": "bun src/index.ts",
-    "build": "bun build src/index.ts --outdir=dist --target=bun",
+    "build": "bun build src/index.ts --outdir=dist --target=bun --external playwright-core --external electron --external chromium-bidi",
     "typecheck": "tsc --noEmit",
-    "test": "bun test"
+    "test": "bun test",
+    "lint": "eslint src"
   },
   "dependencies": {
     "@stepwise/shared": "workspace:*",

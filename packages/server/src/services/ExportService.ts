@@ -5,7 +5,7 @@ import { createWriteStream, readFileSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import sharp from 'sharp';
-import type { ClickStep, HoverStep, ScrollStep, SelectStep, Step, TypeStep, ExportOptions, ExportResult, ExportFormat, StepwiseManifest } from '@stepwise/shared';
+import type { ClickStep, HoverStep, ScrollStep, SelectStep, Step, TypeStep, PasteStep, ExportOptions, ExportResult, ExportFormat, StepwiseManifest } from '@stepwise/shared';
 import type { ServerSession } from '../types/session.js';
 import { encrypt } from '../lib/crypto.js';
 import { env } from '../lib/env.js';
@@ -24,6 +24,17 @@ export class ExportService {
 
   constructor(session: ServerSession) {
     this.session = session;
+  }
+
+  /**
+   * Gets the appropriate screenshot path (redacted or original)
+   */
+  private getScreenshotPath(step: Step): string {
+    if (step.action === 'type' && (step as TypeStep).redactScreenshot) {
+      const typeStep = step as TypeStep;
+      return typeStep.redactedScreenshotPath || step.screenshotPath;
+    }
+    return step.screenshotPath;
   }
 
   /**
@@ -245,8 +256,9 @@ export class ExportService {
 
       if (options.includeScreenshots !== false) {
         try {
-          const imageBuffer = await readFile(step.screenshotPath);
-          const dimensions = await this.calculateImageDimensions(step.screenshotPath);
+          const screenshotPath = this.getScreenshotPath(step);
+          const imageBuffer = await readFile(screenshotPath);
+          const dimensions = await this.calculateImageDimensions(screenshotPath);
 
           children.push(
             new Paragraph({
@@ -283,7 +295,7 @@ export class ExportService {
     const filename = `${this.sanitizeFilename(title)}.docx`;
     const filepath = join(exportDir, filename);
 
-    await writeFile(filepath, buffer as any);
+    await writeFile(filepath, new Uint8Array(buffer));
 
     return {
       filename,
@@ -329,9 +341,11 @@ export class ExportService {
         if (options.includeScreenshots !== false) {
           const imgName = `step-${step.index + 1}.jpg`;
           markdown += `![Step ${step.index + 1}](./images/${imgName})\n\n`;
-          
+
+          const screenshotPath = this.getScreenshotPath(step);
+
           try {
-            const imgBuffer = readFileSync(step.screenshotPath);
+            const imgBuffer = readFileSync(screenshotPath);
             archive.append(imgBuffer, { name: `images/${imgName}` });
           } catch {
             // Skip if not available
@@ -378,8 +392,9 @@ export class ExportService {
       if (options.includeScreenshots !== false) {
         for (const step of this.session.steps) {
           const imgName = `step-${step.index + 1}.jpg`;
+          const screenshotPath = this.getScreenshotPath(step);
           try {
-            const imgBuffer = readFileSync(step.screenshotPath);
+            const imgBuffer = readFileSync(screenshotPath);
             archive.append(imgBuffer, { name: `images/${imgName}` });
           } catch {
             // Skip if not available
@@ -414,20 +429,21 @@ export class ExportService {
     };
 
     const zipBuffer = await new Promise<Buffer>((resolve, reject) => {
-      const chunks: any[] = [];
+      const chunks: Uint8Array[] = [];
       const archive = archiver('zip', { zlib: { level: 9 } });
 
-      archive.on('data', (chunk: Buffer) => chunks.push(chunk as any));
-      archive.on('end', () => resolve(Buffer.concat(chunks as any) as any));
+      archive.on('data', (chunk: Buffer) => chunks.push(new Uint8Array(chunk)));
+      archive.on('end', () => resolve(Buffer.from(Uint8Array.from(chunks.flat()))));
       archive.on('error', reject);
 
       archive.append(JSON.stringify(manifest, null, 2), { name: 'manifest.json' });
       archive.append(JSON.stringify(this.session.steps, null, 2), { name: 'steps.json' });
 
       for (const step of this.session.steps) {
+        const screenshotPath = this.getScreenshotPath(step);
         try {
-          const imgBuffer = readFileSync(step.screenshotPath);
-          archive.append(imgBuffer, { name: `screenshots/${basename(step.screenshotPath)}` });
+          const imgBuffer = readFileSync(screenshotPath);
+          archive.append(imgBuffer, { name: `screenshots/${basename(screenshotPath)}` });
         } catch {
           // Skip if not available
         }
@@ -440,7 +456,7 @@ export class ExportService {
       ? Buffer.from(await encrypt(new Uint8Array(zipBuffer), options.password))
       : zipBuffer;
 
-    await writeFile(filepath, finalBuffer as any);
+    await writeFile(filepath, new Uint8Array(finalBuffer));
 
     return {
       filename,
@@ -460,11 +476,12 @@ export class ExportService {
     for (const step of steps) {
       let imgSrc = '';
       if (options.includeScreenshots !== false) {
+        const screenshotPath = this.getScreenshotPath(step);
         if (useExternalImages) {
           imgSrc = `./images/step-${step.index + 1}.jpg`;
         } else {
           try {
-            const imgBuffer = readFileSync(step.screenshotPath);
+            const imgBuffer = readFileSync(screenshotPath);
             imgSrc = `data:image/jpeg;base64,${imgBuffer.toString('base64')}`;
           } catch {
             imgSrc = '';
@@ -572,6 +589,8 @@ export class ExportService {
         return `Click on ${(step as ClickStep).target.elementTag}`;
       case 'type':
         return `Type in ${(step as TypeStep).fieldName}`;
+      case 'paste':
+        return `Paste in ${(step as PasteStep).fieldName}`;
       case 'navigate':
         return `Navigate to page`;
       case 'scroll':

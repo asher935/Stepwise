@@ -1,10 +1,11 @@
 import type { Browser, Page, CDPSession } from 'playwright-core';
-import type { Step, SessionStatus } from '@stepwise/shared';
+import type { Step, SessionStatus, SessionMode } from '@stepwise/shared';
 
 export interface ServerSession {
   id: string;
   token: string;
   status: SessionStatus;
+  mode: SessionMode;
   browser: Browser | null;
   page: Page | null;
   cdp: CDPSession | null;

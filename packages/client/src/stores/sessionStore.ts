@@ -2,6 +2,27 @@ import type { SessionState, Step, ElementInfo } from '@stepwise/shared';
 import { create } from 'zustand';
 import { api } from '../lib/api';
 import { wsClient } from '../lib/ws';
+import { useReplayStore } from './replayStore';
+
+const DEFAULT_STEP_HIGHLIGHT_COLOR = '#E67E22';
+const STEP_HIGHLIGHT_COLOR_STORAGE_KEY = 'stepwise.stepHighlightColor';
+
+function isHexColor(value: string): boolean {
+  return /^#[0-9a-fA-F]{6}$/.test(value);
+}
+
+function getInitialHighlightColor(): string {
+  if (typeof window === 'undefined') {
+    return DEFAULT_STEP_HIGHLIGHT_COLOR;
+  }
+
+  const stored = window.localStorage.getItem(STEP_HIGHLIGHT_COLOR_STORAGE_KEY);
+  if (stored && isHexColor(stored)) {
+    return stored;
+  }
+
+  return DEFAULT_STEP_HIGHLIGHT_COLOR;
+}
 
 interface SessionStore {
   sessionId: string | null;
@@ -16,12 +37,16 @@ interface SessionStore {
   collapsedStepIds: Set<string>;
   guideTitle: string;
   hoveredStepId: string | null;
+  localStepIds: Set<string>;
+  stepHighlightColor: string;
 
   createSession: () => Promise<void>;
   startSession: (startUrl?: string) => Promise<void>;
   endSession: () => Promise<void>;
-  updateStep: (stepId: string, updates: { caption?: string }) => Promise<void>;
+  updateStep: (stepId: string, updates: { caption?: string; redactScreenshot?: boolean; redactedScreenshotPath?: string }) => Promise<void>;
+  toggleRedaction: (stepId: string, redact: boolean) => Promise<string | undefined>;
   deleteStep: (stepId: string) => Promise<void>;
+  insertStep: (index: number, step: Omit<Step, 'index'>) => void;
   setSteps: (steps: Step[]) => void;
   setFrame: (frame: string) => void;
   setConnected: (connected: boolean) => void;
@@ -31,6 +56,7 @@ interface SessionStore {
   setGuideTitle: (title: string) => void;
   toggleStepCollapsed: (stepId: string) => void;
   setHoveredStepId: (stepId: string | null) => void;
+  setStepHighlightColor: (color: string) => void;
   reset: () => void;
 
   initWebSocket: () => () => void;
@@ -49,6 +75,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   collapsedStepIds: new Set<string>(),
   guideTitle: 'Untitled Guide',
   hoveredStepId: null,
+  localStepIds: new Set<string>(),
+  stepHighlightColor: getInitialHighlightColor(),
 
   createSession: async () => {
     set({ isLoading: true, error: null });
@@ -98,9 +126,16 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     }
   },
 
-  updateStep: async (stepId: string, updates: { caption?: string }) => {
-    const { sessionId, steps } = get();
+  updateStep: async (stepId: string, updates: { caption?: string; redactScreenshot?: boolean; redactedScreenshotPath?: string }) => {
+    const { sessionId, steps, localStepIds } = get();
     if (!sessionId) return;
+
+    if (localStepIds.has(stepId)) {
+      set({
+        steps: steps.map(s => s.id === stepId ? { ...s, ...updates } : s)
+      });
+      return;
+    }
 
     try {
       const updatedStep = await api.updateStep(sessionId, stepId, updates);
@@ -108,27 +143,99 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         steps: steps.map(s => s.id === stepId ? updatedStep : s)
       });
     } catch (error) {
-      set({ 
-        error: error instanceof Error ? error.message : 'Failed to update step' 
+      set({
+        error: error instanceof Error ? error.message : 'Failed to update step'
+      });
+    }
+  },
+
+  toggleRedaction: async (stepId: string, redact: boolean) => {
+    const { sessionId, steps, localStepIds } = get();
+    if (!sessionId) return;
+
+    if (localStepIds.has(stepId)) {
+      set({
+        steps: steps.map(s => s.id === stepId ? { ...s, redactScreenshot: redact } : s)
+      });
+      return;
+    }
+
+    try {
+      const result = await api.toggleRedaction(sessionId, stepId, redact);
+      set({
+        steps: steps.map(s => s.id === stepId ? {
+          ...s,
+          redactScreenshot: redact,
+          redactedScreenshotPath: result.redactedScreenshotPath ?? undefined,
+          // When enabling redaction, save original and use redacted URL
+          // When disabling, restore the original URL
+          ...(redact
+            ? {
+                originalScreenshotDataUrl: s.screenshotDataUrl,
+                screenshotDataUrl: result.screenshotDataUrl ?? s.screenshotDataUrl,
+              }
+            : {
+                screenshotDataUrl: s.originalScreenshotDataUrl ?? s.screenshotDataUrl,
+              }
+          ),
+        } : s)
+      });
+      // Return the appropriate URL for the modal
+      return redact && result.screenshotDataUrl ? result.screenshotDataUrl : undefined;
+    } catch (error) {
+      set({
+        error: error instanceof Error ? error.message : 'Failed to toggle redaction'
       });
     }
   },
 
   deleteStep: async (stepId: string) => {
-    const { sessionId, steps } = get();
+    const { sessionId, localStepIds } = get();
     if (!sessionId) return;
+
+    if (localStepIds.has(stepId)) {
+      const newLocalStepIds = new Set(localStepIds);
+      newLocalStepIds.delete(stepId);
+      set((state) => ({
+        steps: state.steps
+          .filter(s => s.id !== stepId)
+          .map((s, i) => ({ ...s, index: i })),
+        localStepIds: newLocalStepIds
+      }));
+      return;
+    }
 
     try {
       await api.deleteStep(sessionId, stepId);
-      const newSteps = steps
-        .filter(s => s.id !== stepId)
-        .map((s, i) => ({ ...s, index: i }));
-      set({ steps: newSteps });
+      set((state) => ({
+        steps: state.steps
+          .filter(s => s.id !== stepId)
+          .map((s, i) => ({ ...s, index: i }))
+      }));
     } catch (error) {
-      set({ 
-        error: error instanceof Error ? error.message : 'Failed to delete step' 
+      set({
+        error: error instanceof Error ? error.message : 'Failed to delete step'
       });
     }
+  },
+
+  insertStep: (index: number, stepData: Omit<Step, 'index'>) => {
+    const { steps } = get();
+    const newStep: Step = {
+      ...stepData,
+      index,
+    } as Step;
+
+    const newSteps = [
+      ...steps.slice(0, index),
+      newStep,
+      ...steps.slice(index).map(s => ({ ...s, index: s.index + 1 })),
+    ];
+
+    set({ 
+      steps: newSteps,
+      localStepIds: new Set([...get().localStepIds, newStep.id])
+    });
   },
 
   setSteps: (steps: Step[]) => {
@@ -163,6 +270,19 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     set({ hoveredStepId: stepId });
   },
 
+  setStepHighlightColor: (color: string) => {
+    if (!isHexColor(color)) {
+      return;
+    }
+
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(STEP_HIGHLIGHT_COLOR_STORAGE_KEY, color);
+    }
+
+    set({ stepHighlightColor: color });
+    wsClient.setHighlightColor(color);
+  },
+
   toggleStepCollapsed: (stepId: string) => {
     set(state => {
       const newCollapsed = new Set(state.collapsedStepIds);
@@ -190,6 +310,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       collapsedStepIds: new Set<string>(),
       guideTitle: 'Untitled Guide',
       hoveredStepId: null,
+      localStepIds: new Set<string>(),
     });
   },
 
@@ -206,7 +327,6 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
           break;
         case 'step:new':
           set(state => {
-            const allStepIds = [...state.steps.map(s => s.id), message.step.id];
             const previousStepIds = state.steps.map(s => s.id);
             return {
               steps: [...state.steps, message.step],
@@ -222,9 +342,16 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
           }));
           break;
         case 'step:deleted':
-          set(state => ({
-            steps: state.steps.filter(s => s.id !== message.stepId)
-          }));
+          set(state => {
+            const newLocalStepIds = new Set(state.localStepIds);
+            newLocalStepIds.delete(message.stepId);
+            return {
+              steps: state.steps
+                .filter(s => s.id !== message.stepId)
+                .map((s, i) => ({ ...s, index: i })),
+              localStepIds: newLocalStepIds
+            };
+          });
           break;
         case 'session:state':
           set({ sessionState: message.state });
@@ -249,11 +376,24 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         case 'session:unhealthy':
           console.warn('[Session] Unhealthy:', message);
           break;
+        case 'replay:status':
+          useReplayStore.getState().handleReplayStatus(message.status);
+          break;
+        case 'replay:step:start':
+          useReplayStore.getState().handleStepStart(message.stepIndex, message.stepId);
+          break;
+        case 'replay:step:complete':
+          useReplayStore.getState().handleStepComplete(message.stepIndex, message.stepId);
+          break;
+        case 'replay:error':
+          useReplayStore.getState().handleReplayError(message.stepId, message.error);
+          break;
       }
     });
 
     const unsubConnect = wsClient.onConnect(() => {
       set({ isConnected: true });
+      wsClient.setHighlightColor(get().stepHighlightColor);
     });
 
     const unsubDisconnect = wsClient.onDisconnect(() => {

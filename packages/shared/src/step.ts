@@ -19,6 +19,10 @@ export interface BaseStep {
   screenshotDataUrl?: string;
   caption: string;
   isEdited: boolean;
+  screenshotClip?: { x: number; y: number; width: number; height: number };
+  redactedScreenshotPath?: string;
+  /** Stores the original screenshot URL before redaction is applied */
+  originalScreenshotDataUrl?: string;
 }
 
 /** Click action step */
@@ -33,9 +37,19 @@ export interface TypeStep extends BaseStep {
   action: 'type';
   target: StepHighlight;
   fieldName: string;
-  redacted: true;
+  redactScreenshot: boolean;
   displayText: string;
   rawValue?: string;
+}
+
+/** Paste action step */
+export interface PasteStep extends BaseStep {
+  action: 'paste';
+  target: StepHighlight;
+  fieldName: string;
+  redactScreenshot: boolean;
+  displayText: string;
+  rawValue: string; // Pasted content
 }
 
 /** Navigate action step */
@@ -67,13 +81,14 @@ export interface HoverStep extends BaseStep {
 }
 
 /** Union of all step types */
-export type Step = 
-  | ClickStep 
-  | TypeStep 
-  | NavigateStep 
-  | ScrollStep 
-  | SelectStep 
-  | HoverStep;
+export type Step =
+  | ClickStep
+  | TypeStep
+  | NavigateStep
+  | ScrollStep
+  | SelectStep
+  | HoverStep
+  | PasteStep;
 
 /** Step action types */
 export type StepAction = Step['action'];
@@ -82,4 +97,6 @@ export type StepAction = Step['action'];
 export interface UpdateStepRequest {
   caption?: string;
   isEdited?: boolean;
+  redactScreenshot?: boolean;
+  redactedScreenshotPath?: string;
 }

@@ -117,7 +117,7 @@ function resolveKeyInfo(key: string, code?: string, keyCode?: number): ResolvedK
 interface CDPError {
   code: string;
   message: string;
-  context?: Record<string, any>;
+  context?: Record<string, unknown>;
   originalError?: Error;
 }
 
@@ -128,14 +128,7 @@ interface CDPBridgeOptions {
   onError?: ErrorHandler;
 }
 
-interface CDPBridgeOptions {
-  session: ServerSession;
-  onFrame: FrameHandler;
-  onNavigation: NavigationHandler;
-  onError?: ErrorHandler;
-}
-
-function createCDPError(code: string, message: string, context?: Record<string, any>, originalError?: Error): CDPError {
+function createCDPError(code: string, message: string, context?: Record<string, unknown>, originalError?: Error): CDPError {
   return {
     code,
     message,
@@ -153,6 +146,18 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
   ]);
 }
 
+function isHexColor(value: string): boolean {
+  return /^#[0-9a-fA-F]{6}$/.test(value);
+}
+
+function hexToRgba(hex: string, alpha: number): string {
+  const normalized = hex.replace('#', '');
+  const r = parseInt(normalized.slice(0, 2), 16);
+  const g = parseInt(normalized.slice(2, 4), 16);
+  const b = parseInt(normalized.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 export class CDPBridge {
   private session: ServerSession;
   private onFrame: FrameHandler;
@@ -166,6 +171,7 @@ export class CDPBridge {
   private isHealthy: boolean = true;
   private healthCheckTimer: ReturnType<typeof setInterval> | null = null;
   private pressedButtons: number = 0;
+  private highlightColor: string = '#E67E22';
 
   constructor(options: CDPBridgeOptions) {
     this.session = options.session;
@@ -194,7 +200,7 @@ export class CDPBridge {
   private async executeWithErrorHandling<T>(
     operation: () => Promise<T>,
     operationName: string,
-    context?: Record<string, any>
+    context?: Record<string, unknown>
   ): Promise<T | null> {
     try {
       return await withTimeout(operation(), 30000);
@@ -324,6 +330,51 @@ export class CDPBridge {
   async click(x: number, y: number, button: 'left' | 'right' | 'middle' = 'left'): Promise<void> {
     await this.sendMouseInput('down', x, y, button);
     await this.sendMouseInput('up', x, y, button);
+  }
+
+  async hover(x: number, y: number): Promise<void> {
+    const result = await this.executeWithHealthCheck(
+      () => this.cdp.send('Input.dispatchMouseEvent', {
+        type: 'mouseMoved',
+        x,
+        y,
+        button: 'none',
+        buttons: 0,
+      }),
+      'hover',
+      { x, y }
+    );
+    if (result === null) {
+      throw new Error('CDP hover event failed');
+    }
+  }
+
+  async selectOption(x: number, y: number, value: string): Promise<void> {
+    // First click on the select element to open dropdown
+    await this.click(x, y);
+
+    // Wait for dropdown to render
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    // Set the select value via JavaScript
+    const result = await this.executeWithHealthCheck(
+      () => this.page.evaluate(([val]) => {
+        const select = document.querySelector('select') as HTMLSelectElement | null;
+        if (select) {
+          select.value = val;
+          // Trigger change event
+          select.dispatchEvent(new Event('change', { bubbles: true }));
+          return true;
+        }
+        return false;
+      }, [value] as const),
+      'selectOption',
+      { x, y, value }
+    );
+
+    if (result === null) {
+      throw new Error('CDP select option failed');
+    }
   }
 
   async sendKeyboardInput(
@@ -552,7 +603,7 @@ export class CDPBridge {
    * Injects a highlight overlay for an element on the page
    */
   async injectHighlightOverlay(boundingBox: { x: number; y: number; width: number; height: number }): Promise<void> {
-    await this.page.evaluate(([box]) => {
+    await this.page.evaluate(([box, borderColor]) => {
       // Create highlight overlay element
       const overlay = document.createElement('div');
       overlay.id = 'stepwise-highlight-overlay';
@@ -561,12 +612,19 @@ export class CDPBridge {
       overlay.style.top = `${box.y}px`;
       overlay.style.width = `${box.width}px`;
       overlay.style.height = `${box.height}px`;
-      overlay.style.border = '3px solid rgba(230, 126, 34, 0.9)';
+      overlay.style.border = `3px solid ${borderColor}`;
       overlay.style.borderRadius = '4px';
       overlay.style.pointerEvents = 'none';
       overlay.style.zIndex = '999999';
       document.body.appendChild(overlay);
-    }, [boundingBox] as const);
+    }, [boundingBox, hexToRgba(this.highlightColor, 0.9)] as const);
+  }
+
+  setHighlightColor(color: string): void {
+    if (!isHexColor(color)) {
+      return;
+    }
+    this.highlightColor = color;
   }
 
   /**
@@ -616,7 +674,7 @@ export class CDPBridge {
 
   async validateCDPSession(): Promise<void> {
     const now = Date.now();
-    
+
     if (now - this.lastHealthCheck < 10000) {
       return;
     }
@@ -625,8 +683,8 @@ export class CDPBridge {
 
     try {
       await withTimeout(
-        this.cdp.send('Runtime.evaluate', { 
-          expression: '1 + 1' 
+        this.cdp.send('Runtime.evaluate', {
+          expression: '1 + 1'
         }),
         3000
       );
@@ -672,7 +730,7 @@ export class CDPBridge {
   private async executeWithHealthCheck<T>(
     operation: () => Promise<T>,
     operationName: string,
-    context?: Record<string, any>
+    context?: Record<string, unknown>
   ): Promise<T | null> {
     try {
       await this.validateCDPSession();

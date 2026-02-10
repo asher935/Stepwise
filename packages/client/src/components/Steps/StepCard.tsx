@@ -1,8 +1,8 @@
 import { useState, useCallback } from 'react';
-import { Trash2, Edit3 } from 'lucide-react';
-import type { Step } from '@stepwise/shared';
+import { Trash2, Edit3, EyeOff } from 'lucide-react';
+import type { Step, TypeStep } from '@stepwise/shared';
 import { useSessionStore } from '@/stores/sessionStore';
-import { ScreenshotModal } from './ScreenshotModal';
+import { EditStepModal } from './EditStepModal';
 
 interface StepCardProps {
   step: Step;
@@ -11,6 +11,7 @@ interface StepCardProps {
 export function StepCard({ step }: StepCardProps) {
   const updateStep = useSessionStore((s) => s.updateStep);
   const deleteStep = useSessionStore((s) => s.deleteStep);
+  const toggleRedaction = useSessionStore((s) => s.toggleRedaction);
   const steps = useSessionStore((s) => s.steps);
   const toggleStepCollapsed = useSessionStore((s) => s.toggleStepCollapsed);
   const hoveredStepId = useSessionStore((s) => s.hoveredStepId);
@@ -44,15 +45,23 @@ export function StepCard({ step }: StepCardProps) {
   }, [deleteStep, step.id]);
 
   return (
-    <div
+    <article
       className={`group relative bg-white border border-white rounded-[40px] overflow-hidden shadow-[0_10px_30px_rgba(45,36,30,0.04)] hover:shadow-[0_15px_40px_rgba(45,36,30,0.08)] transition-all duration-500 ${shouldExpand ? 'hover:-translate-y-1' : ''}`}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
       {/* Top Section with Icon and Info */}
       <div
-        className={`p-6 flex items-start space-x-5 cursor-pointer`}
+        role="button"
+        tabIndex={0}
+        className={`p-6 flex items-start space-x-5 w-full cursor-pointer bg-transparent border-0 text-left`}
         onClick={handleToggleCollapse}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            handleToggleCollapse();
+          }
+        }}
       >
         <div className={`shrink-0 rounded-[24px] bg-[#FAD7BD]/30 text-[#E67E22] flex items-center justify-center font-black transition-all duration-500 ${!shouldExpand ? 'w-10 h-10 text-base rounded-[14px]' : 'w-16 h-16 text-2xl'}`}>
           {step.index + 1}
@@ -65,6 +74,7 @@ export function StepCard({ step }: StepCardProps) {
             </span>
             <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
               <button
+                type="button"
                 onClick={(e) => {
                   e.stopPropagation();
                   setIsScreenshotModalOpen(true);
@@ -75,6 +85,7 @@ export function StepCard({ step }: StepCardProps) {
                 <Edit3 size={16} />
               </button>
               <button
+                type="button"
                 onClick={(e) => {
                   e.stopPropagation();
                   handleDelete();
@@ -96,9 +107,14 @@ export function StepCard({ step }: StepCardProps) {
       <div className={`px-6 pb-6 transition-all duration-500 ease-in-out ${!shouldExpand ? 'max-h-0 opacity-0 overflow-hidden pb-0' : 'max-h-[500px] opacity-100'}`}>
         <button
           type="button"
-          onClick={() => step.screenshotDataUrl && setIsScreenshotModalOpen(true)}
-          className="relative aspect-video bg-[#FDF2E9] rounded-[32px] overflow-hidden group/img cursor-zoom-in border border-black/5 w-full text-left"
-          disabled={!step.screenshotDataUrl}
+          onClick={() => setIsScreenshotModalOpen(true)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setIsScreenshotModalOpen(true);
+            }
+          }}
+          className={`relative aspect-video rounded-[32px] overflow-hidden group/img border border-black/5 w-full text-left ${step.screenshotDataUrl ? 'bg-[#FDF2E9] cursor-zoom-in' : 'bg-[#FDF2E9]/50 cursor-pointer'}`}
         >
           {step.screenshotDataUrl ? (
             <>
@@ -107,6 +123,14 @@ export function StepCard({ step }: StepCardProps) {
                 alt={`Step ${step.index + 1}`}
                 className="w-full h-full object-cover group-hover/img:scale-105 transition-transform duration-1000"
               />
+              {step.action === 'type' && (step as TypeStep).redactScreenshot && (
+                <div className="absolute top-4 right-4 z-10">
+                  <div className="bg-black/70 backdrop-blur-sm px-3 py-2 rounded-full text-white shadow-lg flex items-center space-x-2">
+                    <EyeOff size={16} />
+                    <span className="text-xs font-bold uppercase tracking-wider">Redacted</span>
+                  </div>
+                </div>
+              )}
               <div className="absolute inset-0 bg-gradient-to-t from-[#2D241E]/40 to-transparent opacity-0 group-hover/img:opacity-100 transition-opacity duration-500 flex items-center justify-center pointer-events-none">
                 <span className="bg-white/90 backdrop-blur-md px-6 py-2.5 rounded-full text-xs font-black uppercase tracking-widest text-[#2D241E] shadow-xl hover:bg-white transition-all flex items-center">
                   View Capture
@@ -114,31 +138,35 @@ export function StepCard({ step }: StepCardProps) {
               </div>
             </>
           ) : (
-            <div className="w-full h-full flex items-center justify-center text-[#BBAFA7] text-sm font-bold">
-              No screenshot
+            <div className="w-full h-full flex flex-col items-center justify-center text-[#BBAFA7]">
+              <div className="text-sm font-bold">No screenshot</div>
+              <div className="text-xs mt-1 opacity-75">Click to edit caption</div>
             </div>
           )}
         </button>
       </div>
 
-      {step.screenshotDataUrl && (
-        <ScreenshotModal
-          open={isScreenshotModalOpen}
-          onOpenChange={(open) => {
-            setIsScreenshotModalOpen(open);
-            // Clear hover state when modal opens or closes
-            if (!open && hoveredStepId === step.id) {
-              setHoveredStepId(null);
-            }
-          }}
-          screenshotDataUrl={step.screenshotDataUrl}
-          stepNumber={step.index + 1}
-          caption={step.caption}
-          onSaveCaption={async (newCaption) => {
-            await updateStep(step.id, { caption: newCaption });
-          }}
-        />
-      )}
-    </div>
+      <EditStepModal
+        open={isScreenshotModalOpen}
+        onOpenChange={(open: boolean) => {
+          setIsScreenshotModalOpen(open);
+          if (!open && hoveredStepId === step.id) {
+            setHoveredStepId(null);
+          }
+        }}
+        screenshotDataUrl={step.screenshotDataUrl}
+        originalScreenshotDataUrl={step.action === 'type' ? (step as TypeStep).originalScreenshotDataUrl : undefined}
+        stepNumber={step.index + 1}
+        caption={step.caption}
+        onSaveCaption={async (newCaption: string) => {
+          await updateStep(step.id, { caption: newCaption });
+        }}
+        onToggleRedaction={async (redact: boolean) => {
+          return await toggleRedaction(step.id, redact);
+        }}
+        isTypeStep={step.action === 'type'}
+        isRedacted={step.action === 'type' ? (step as TypeStep).redactScreenshot : false}
+      />
+    </article>
   );
 }

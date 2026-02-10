@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
-import { Download, Upload, LogOut, Menu, X, Power, Zap } from 'lucide-react';
+import { Download, Upload, LogOut, Menu, X, Power } from 'lucide-react';
 import { Toolbar } from '@/components/Browser/Toolbar';
 import { Viewport } from '@/components/Browser/Viewport';
 import { DebugOverlay } from '@/components/Debug/DebugOverlay';
 import { ExportModal } from '@/components/Export/ExportModal';
 import { ImportModal } from '@/components/Import/ImportModal';
 import { StepsList } from '@/components/Steps/StepsList';
+import { ReplayControls } from '@/components/Replay';
 import { useSessionStore } from '@/stores/sessionStore';
+import { useReplayWebSocket } from '@/hooks/useReplayWebSocket';
 
 export function EditorShell() {
   const endSession = useSessionStore((s) => s.endSession);
@@ -22,10 +24,14 @@ export function EditorShell() {
   const [showFinish, setShowFinish] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
+  // Initialize WebSocket for session
   useEffect(() => {
     const cleanup = initWebSocket();
     return cleanup;
   }, [initWebSocket]);
+
+  // Initialize WebSocket handlers for replay
+  useReplayWebSocket();
 
   const handleConfirmFinish = async () => {
     await endSession();
@@ -107,6 +113,12 @@ export function EditorShell() {
               {steps.length}
             </div>
           </div>
+
+          {/* Replay Controls */}
+          <div className="px-6 mb-4">
+            <ReplayControls />
+          </div>
+
           <div className="overflow-y-auto h-full pb-48 px-6 scrollbar-thin">
             <StepsList />
           </div>

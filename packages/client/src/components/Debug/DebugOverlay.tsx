@@ -26,10 +26,14 @@ function describeClientMessage(message: ClientMessage): string {
       return `navigate:${message.action}${message.url ? ` ${message.url}` : ''}`;
     case 'ping':
       return 'ping';
-    default: {
-      const _exhaustiveCheck: never = message;
-      return `unknown:${(message as { type: string }).type}`;
-    }
+    case 'replay:start':
+      return `replay:start speed:${message.options?.speed ?? 1}`;
+    case 'replay:pause':
+      return 'replay:pause';
+    case 'replay:resume':
+      return 'replay:resume';
+    case 'replay:stop':
+      return 'replay:stop';
   }
 }
 
@@ -59,10 +63,14 @@ function describeServerMessage(message: ServerMessage): string {
       return `element:hover ${message.element?.tagName || 'null'}`;
     case 'error':
       return `error ${message.code}`;
-    default: {
-      const _exhaustiveCheck: never = message;
-      return `unknown:${(message as { type: string }).type}`;
-    }
+    case 'replay:status':
+      return `replay:status ${message.status.state} step:${message.status.currentStepIndex}/${message.status.totalSteps}`;
+    case 'replay:step:start':
+      return `replay:step:start index:${message.stepIndex} id:${message.stepId}`;
+    case 'replay:step:complete':
+      return `replay:step:complete index:${message.stepIndex} id:${message.stepId}`;
+    case 'replay:error':
+      return `replay:error step:${message.stepId ?? 'unknown'} ${message.error}`;
   }
 }
 

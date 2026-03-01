@@ -19,14 +19,18 @@ const HOVER_THROTTLE = {
   MIN_INTERVAL_MS: 67, // ~15 updates per second
 };
 
-// Active connections and their state
-const connections = new Map<ServerWebSocket<WSConnection>, {
+type ConnectionState = {
   bridge: CDPBridge | null;
   recorder: Recorder | null;
   replayService: ReplayService | null;
+  highlightColor: string;
   rateLimit: RateLimitState;
   lastHoverUpdate: number;
-}>();
+  mouseActionQueue: Promise<void>;
+};
+
+// Active connections and their state
+const connections = new Map<ServerWebSocket<WSConnection>, ConnectionState>();
 
 function getConnectionIdentity(ws: ServerWebSocket<WSConnection>): { sessionId: string; token: string } | null {
   const data = ws.data as WSConnection & {
@@ -47,13 +51,7 @@ function resolveConnectionState(
   ws: ServerWebSocket<WSConnection>
 ): {
   socket: ServerWebSocket<WSConnection>;
-  state: {
-    bridge: CDPBridge | null;
-    recorder: Recorder | null;
-    replayService: ReplayService | null;
-    rateLimit: RateLimitState;
-    lastHoverUpdate: number;
-  };
+  state: ConnectionState;
 } | null {
   const direct = connections.get(ws);
   if (direct) {
@@ -212,6 +210,10 @@ function broadcastToSession(sessionId: string, message: ServerMessage): void {
   }
 }
 
+export function notifyStepDeleted(sessionId: string, stepId: string): void {
+  broadcastToSession(sessionId, { type: 'step:deleted', stepId });
+}
+
 /**
  * Checks rate limit for a connection
  */
@@ -266,8 +268,10 @@ export async function handleOpen(ws: ServerWebSocket<WSConnection>): Promise<voi
     bridge: null as CDPBridge | null,
     recorder: null as Recorder | null,
     replayService: null as ReplayService | null,
+    highlightColor: '#FF0000',
     rateLimit: { inputCount: 0, lastReset: Date.now() },
     lastHoverUpdate: 0,
+    mouseActionQueue: Promise.resolve(),
   };
 
   connections.set(ws, state);
@@ -302,7 +306,7 @@ export async function handleOpen(ws: ServerWebSocket<WSConnection>): Promise<voi
 async function setupBridgeAndRecorder(
   ws: ServerWebSocket<WSConnection>,
   session: ServerSession,
-  state: { bridge: CDPBridge | null; recorder: Recorder | null; replayService: ReplayService | null; rateLimit: RateLimitState }
+  state: ConnectionState
 ): Promise<void> {
   // Create CDP bridge
   const bridge = new CDPBridge({
@@ -346,6 +350,7 @@ async function setupBridgeAndRecorder(
   });
 
   // Start screencast
+  bridge.setHighlightColor(state.highlightColor);
   await bridge.startScreencast();
 
   state.bridge = bridge;
@@ -443,67 +448,90 @@ export async function handleMessage(
     console.warn('[WS] Received action', parsed);
   }
 
-  // Handle message types
-  switch (parsed.type) {
-    case 'ping':
-      send(socket, {
-        type: 'pong',
-        timestamp: parsed.timestamp,
-        serverTime: Date.now(),
-      });
-      break;
+  try {
+    switch (parsed.type) {
+      case 'ping':
+        send(socket, {
+          type: 'pong',
+          timestamp: parsed.timestamp,
+          serverTime: Date.now(),
+        });
+        break;
 
-    case 'input:mouse':
-      await handleMouseInput(socket, state, parsed);
-      break;
+      case 'input:mouse':
+        await handleMouseInput(socket, state, parsed);
+        break;
 
-    case 'input:keyboard':
-      await handleKeyboardInput(socket, state, parsed);
-      break;
+      case 'input:keyboard':
+        await handleKeyboardInput(socket, state, parsed);
+        break;
 
-    case 'input:scroll':
-      await handleScrollInput(socket, state, parsed);
-      break;
+      case 'input:scroll':
+        await handleScrollInput(socket, state, parsed);
+        break;
 
-    case 'navigate':
-      await handleNavigate(socket, state, parsed);
-      break;
+      case 'navigate':
+        await handleNavigate(socket, state, parsed);
+        break;
 
-    case 'settings:highlight':
-      handleHighlightSettings(state, parsed);
-      break;
+      case 'settings:highlight':
+        handleHighlightSettings(state, parsed);
+        break;
 
-    case 'replay:start':
-      await handleReplayStart(socket, state, parsed);
-      break;
+      case 'replay:start':
+        await handleReplayStart(socket, state, parsed);
+        break;
 
-    case 'replay:pause':
-      handleReplayControl(socket, state, 'pause');
-      break;
+      case 'replay:pause':
+        handleReplayControl(socket, state, 'pause');
+        break;
 
-    case 'replay:resume':
-      handleReplayControl(socket, state, 'resume');
-      break;
+      case 'replay:resume':
+        handleReplayControl(socket, state, 'resume');
+        break;
 
-    case 'replay:stop':
-      handleReplayControl(socket, state, 'stop');
-      break;
+      case 'replay:stop':
+        handleReplayControl(socket, state, 'stop');
+        break;
 
-    default:
-      send(socket, {
-        type: 'error',
-        code: 'UNKNOWN_MESSAGE',
-        message: `Unknown message type`,
-      });
+      default:
+        send(socket, {
+          type: 'error',
+          code: 'UNKNOWN_MESSAGE',
+          message: 'Unknown message type',
+        });
+    }
+  } catch (error) {
+    console.error('[WS] Unhandled message error', {
+      sessionId,
+      type: parsed.type,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    send(socket, {
+      type: 'input:error',
+      action: parsed.type,
+      reason: error instanceof Error ? error.message : 'Unexpected server error',
+    });
   }
 }
 
 function handleHighlightSettings(
-  state: { bridge: CDPBridge | null; recorder: Recorder | null; replayService: ReplayService | null; rateLimit: RateLimitState; lastHoverUpdate: number },
+  state: ConnectionState,
   message: { type: 'settings:highlight'; color: string }
 ): void {
-  if (!state.bridge) return;
-  state.bridge.setHighlightColor(message.color);
+  state.highlightColor = message.color;
+  if (state.bridge) {
+    state.bridge.setHighlightColor(message.color);
+  }
+}
+
+function enqueueMouseAction(
+  state: ConnectionState,
+  task: () => Promise<void>
+): Promise<void> {
+  const queued = state.mouseActionQueue.then(task);
+  state.mouseActionQueue = queued.catch(() => undefined);
+  return queued;
 }
 
 /**
@@ -511,7 +539,7 @@ function handleHighlightSettings(
  */
 async function handleMouseInput(
   ws: ServerWebSocket<WSConnection>,
-  state: { bridge: CDPBridge | null; recorder: Recorder | null; replayService: ReplayService | null; rateLimit: RateLimitState; lastHoverUpdate: number },
+  state: ConnectionState,
   message: { type: 'input:mouse'; action: string; x: number; y: number; button?: string }
 ): Promise<void> {
   // Ignore input during replay
@@ -520,6 +548,8 @@ async function handleMouseInput(
   }
 
   if (!state.bridge || !state.recorder) return;
+  const bridge = state.bridge;
+  const recorder = state.recorder;
 
   // Rate limit check
   if (!checkRateLimit(state.rateLimit)) {
@@ -533,7 +563,7 @@ async function handleMouseInput(
   }
 
   // Validate CDP session health before proceeding
-  if (!(await state.bridge.isCDPHealthy())) {
+  if (!(await bridge.isCDPHealthy())) {
     send(ws, {
       type: 'cdp:error',
       code: 'SESSION_UNHEALTHY',
@@ -547,42 +577,41 @@ async function handleMouseInput(
   const btn = button as 'left' | 'right' | 'middle';
 
   try {
-    switch (action) {
-      case 'move': {
-        await state.bridge.sendMouseInput('move', x, y, btn);
-        // Element hover detection with throttling
-        const now = Date.now();
-        if (now - state.lastHoverUpdate >= HOVER_THROTTLE.MIN_INTERVAL_MS) {
-          state.lastHoverUpdate = now;
-          const element = await state.bridge.getElementAtPoint(x, y);
-          send(ws, {
-            type: 'element:hover',
-            element: element ? {
-              tagName: element.tagName,
-              id: element.id,
-              className: element.className,
-              boundingBox: element.boundingBox,
-            } : null,
-          });
-        }
-        break;
+    if (action === 'move') {
+      await bridge.sendMouseInput('move', x, y, btn);
+      const now = Date.now();
+      if (now - state.lastHoverUpdate >= HOVER_THROTTLE.MIN_INTERVAL_MS) {
+        state.lastHoverUpdate = now;
+        const element = await bridge.getElementAtPoint(x, y);
+        send(ws, {
+          type: 'element:hover',
+          element: element ? {
+            tagName: element.tagName,
+            id: element.id,
+            className: element.className,
+            boundingBox: element.boundingBox,
+          } : null,
+        });
       }
-
-      case 'down':
-        // Prepare screenshot before sending mouse down to browser
-        await state.recorder.prepareClickScreenshot(x, y, btn);
-        await state.bridge.sendMouseInput('down', x, y, btn);
-        break;
-
-      case 'up':
-        await state.bridge.sendMouseInput('up', x, y, btn);
-        break;
-
-      case 'click':
-        // Record click action using pre-captured screenshot
-        await state.recorder.recordClick(x, y, btn);
-        break;
+      return;
     }
+
+    await enqueueMouseAction(state, async () => {
+      switch (action) {
+        case 'down':
+          await recorder.prepareClickScreenshot(x, y, btn);
+          await bridge.sendMouseInput('down', x, y, btn);
+          break;
+
+        case 'up':
+          await bridge.sendMouseInput('up', x, y, btn);
+          break;
+
+        case 'click':
+          await recorder.recordClick(x, y, btn);
+          break;
+      }
+    });
   } catch (error) {
     send(ws, {
       type: 'input:error',
@@ -597,7 +626,7 @@ async function handleMouseInput(
  */
 async function handleKeyboardInput(
   ws: ServerWebSocket<WSConnection>,
-  state: { bridge: CDPBridge | null; recorder: Recorder | null; replayService: ReplayService | null; rateLimit: RateLimitState },
+  state: ConnectionState,
   message: {
     type: 'input:keyboard';
     action: string;
@@ -647,16 +676,21 @@ async function handleKeyboardInput(
     !modifiers?.alt;
 
   if (isPaste) {
-    // Send keyboard input to browser
-    await state.bridge.sendKeyboardInput('down', key, text, modifiers, code, keyCode);
+    try {
+      await state.bridge.sendKeyboardInput('down', key, text, modifiers, code, keyCode);
 
-    // Get clipboard content from browser
-    const session = sessionManager.getSession(ws.data.sessionId);
-    const clipboardText = session ? await getClipboardContent(session) : null;
+      const session = sessionManager.getSession(ws.data.sessionId);
+      const clipboardText = session ? await getClipboardContent(session) : null;
 
-    // Create paste step immediately
-    if (clipboardText && state.recorder) {
-      await state.recorder.recordPaste(clipboardText);
+      if (clipboardText && state.recorder) {
+        await state.recorder.recordPaste(clipboardText);
+      }
+    } catch (error) {
+      send(ws, {
+        type: 'input:error',
+        action: 'keyboard:paste',
+        reason: error instanceof Error ? error.message : String(error)
+      });
     }
 
     return;
@@ -692,7 +726,7 @@ async function handleKeyboardInput(
  */
 async function handleScrollInput(
   ws: ServerWebSocket<WSConnection>,
-  state: { bridge: CDPBridge | null; recorder: Recorder | null; replayService: ReplayService | null; rateLimit: RateLimitState },
+  state: ConnectionState,
   message: { type: 'input:scroll'; deltaX: number; deltaY: number; x: number; y: number }
 ): Promise<void> {
   // Ignore input during replay
@@ -743,7 +777,7 @@ async function handleScrollInput(
  */
 async function handleNavigate(
   ws: ServerWebSocket<WSConnection>,
-  state: { bridge: CDPBridge | null; recorder: Recorder | null; replayService: ReplayService | null; rateLimit: RateLimitState },
+  state: ConnectionState,
   message: { type: 'navigate'; action: string; url?: string }
 ): Promise<void> {
   if (!state.bridge || !state.recorder) return;
@@ -805,12 +839,7 @@ async function handleNavigate(
  */
 async function handleReplayStart(
   ws: ServerWebSocket<WSConnection>,
-  state: {
-    bridge: CDPBridge | null;
-    recorder: Recorder | null;
-    replayService: ReplayService | null;
-    rateLimit: RateLimitState;
-  },
+  state: ConnectionState,
   message: { type: 'replay:start'; options?: { speed?: number; stopOnError?: boolean } }
 ): Promise<void> {
   if (!state.bridge) {
@@ -908,12 +937,7 @@ async function handleReplayStart(
  */
 function handleReplayControl(
   ws: ServerWebSocket<WSConnection>,
-  state: {
-    bridge: CDPBridge | null;
-    recorder: Recorder | null;
-    replayService: ReplayService | null;
-    rateLimit: RateLimitState;
-  },
+  state: ConnectionState,
   action: 'pause' | 'resume' | 'stop'
 ): void {
   if (!state.replayService) {

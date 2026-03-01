@@ -81,6 +81,8 @@ export function Viewport() {
   }, [translateCoords]);
 
   const handleWheel = useCallback((e: React.WheelEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
     const coords = translateCoords(e.clientX, e.clientY);
     if (coords) {
       wsClient.sendScroll(coords.x, coords.y, e.deltaX, e.deltaY);

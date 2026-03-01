@@ -405,7 +405,9 @@ export class Recorder {
 
       // Start new debounce timer to update screenshot
       this.typeDebounceTimer = setTimeout(() => {
-        void this.updateLastTypeStepScreenshot();
+        void this.updateLastTypeStepScreenshot().catch((error: unknown) => {
+          console.error('[Recorder] Failed to update type step screenshot:', error);
+        });
       }, this.TYPING_DEBOUNCE_MS);
 
       // Emit step:updated event
@@ -453,7 +455,9 @@ export class Recorder {
     }
 
     this.typeDebounceTimer = setTimeout(() => {
-      void this.finalizePendingTypeStep();
+      void this.finalizePendingTypeStep().catch((error: unknown) => {
+        console.error('[Recorder] Failed to finalize type step:', error);
+      });
     }, this.TYPING_DEBOUNCE_MS);
   }
 
@@ -621,8 +625,8 @@ export class Recorder {
     // Clear last type step on navigation
     this.clearLastTypeStep();
 
-    // Capture screenshot after navigation settles
-    const screenshotData = await this.captureScreenshot(500);
+    await this.cdpBridge.waitForPageLoad();
+    const screenshotData = await this.captureScreenshot();
     const screenshotPath = await this.saveScreenshot(screenshotData);
     const screenshotDataUrl = this.toScreenshotDataUrl(screenshotData);
 

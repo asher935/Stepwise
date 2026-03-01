@@ -146,6 +146,14 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
   ]);
 }
 
+function isExecutionContextDestroyedError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  return error.message.includes('Execution context was destroyed');
+}
+
 function isHexColor(value: string): boolean {
   return /^#[0-9a-fA-F]{6}$/.test(value);
 }
@@ -171,7 +179,7 @@ export class CDPBridge {
   private isHealthy: boolean = true;
   private healthCheckTimer: ReturnType<typeof setInterval> | null = null;
   private pressedButtons: number = 0;
-  private highlightColor: string = '#E67E22';
+  private highlightColor: string = '#FF0000';
 
   constructor(options: CDPBridgeOptions) {
     this.session = options.session;
@@ -205,6 +213,10 @@ export class CDPBridge {
     try {
       return await withTimeout(operation(), 30000);
     } catch (originalError) {
+      if (operationName === 'getElementAtPoint' && isExecutionContextDestroyedError(originalError)) {
+        return null;
+      }
+
       const error = createCDPError(
         `CDP_${operationName.toUpperCase()}_FAILED`,
         `${operationName} failed: ${originalError instanceof Error ? originalError.message : String(originalError)}`,
@@ -265,12 +277,22 @@ export class CDPBridge {
 
     // Set up navigation handlers
     this.page.on('framenavigated', async (frame) => {
-      if (frame === this.page.mainFrame()) {
-        const url = frame.url();
-        const title = await this.page.title();
-        this.session.url = url;
-        this.session.title = title;
-        this.onNavigation(url, title);
+      try {
+        if (frame === this.page.mainFrame()) {
+          const url = frame.url();
+          const title = await this.page.title();
+          this.session.url = url;
+          this.session.title = title;
+          this.onNavigation(url, title);
+        }
+      } catch (originalError) {
+        const error = createCDPError(
+          'CDP_NAVIGATION_HANDLER_FAILED',
+          `Navigation handler failed: ${originalError instanceof Error ? originalError.message : String(originalError)}`,
+          undefined,
+          originalError instanceof Error ? originalError : new Error(String(originalError))
+        );
+        this.reportError(error);
       }
     });
 
@@ -462,6 +484,7 @@ export class CDPBridge {
       'navigate',
       { url }
     );
+    await this.waitForPageLoad();
   }
 
   async goBack(): Promise<void> {
@@ -469,6 +492,7 @@ export class CDPBridge {
       () => this.page.goBack({ waitUntil: 'domcontentloaded' }),
       'goBack'
     );
+    await this.waitForPageLoad();
   }
 
   async goForward(): Promise<void> {
@@ -476,12 +500,28 @@ export class CDPBridge {
       () => this.page.goForward({ waitUntil: 'domcontentloaded' }),
       'goForward'
     );
+    await this.waitForPageLoad();
   }
 
   async reload(): Promise<void> {
     await this.executeWithErrorHandling(
       () => this.page.reload({ waitUntil: 'domcontentloaded' }),
       'reload'
+    );
+    await this.waitForPageLoad();
+  }
+
+  async waitForPageLoad(timeoutMs: number = 15000, settleMs: number = 200): Promise<void> {
+    await this.executeWithErrorHandling(
+      async () => {
+        await this.page.waitForLoadState('domcontentloaded', { timeout: timeoutMs });
+        await this.page.waitForLoadState('load', { timeout: timeoutMs });
+        if (settleMs > 0) {
+          await this.page.waitForTimeout(settleMs);
+        }
+      },
+      'waitForPageLoad',
+      { timeoutMs, settleMs }
     );
   }
 

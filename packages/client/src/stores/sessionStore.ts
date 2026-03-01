@@ -4,7 +4,7 @@ import { api } from '../lib/api';
 import { wsClient } from '../lib/ws';
 import { useReplayStore } from './replayStore';
 
-const DEFAULT_STEP_HIGHLIGHT_COLOR = '#E67E22';
+const DEFAULT_STEP_HIGHLIGHT_COLOR = '#FF0000';
 const STEP_HIGHLIGHT_COLOR_STORAGE_KEY = 'stepwise.stepHighlightColor';
 
 function isHexColor(value: string): boolean {

@@ -9,6 +9,7 @@ interface StepInsertionPointProps {
 
 export function StepInsertionPoint({ index }: StepInsertionPointProps) {
   const insertStep = useSessionStore((s) => s.insertStep);
+  const currentFrame = useSessionStore((s) => s.currentFrame);
   const [isHovered, setIsHovered] = useState(false);
 
   const handleInsert = (e: React.MouseEvent | React.KeyboardEvent) => {
@@ -28,6 +29,7 @@ export function StepInsertionPoint({ index }: StepInsertionPointProps) {
       button: 'left',
       timestamp: Date.now(),
       screenshotPath: '',
+      screenshotDataUrl: currentFrame ?? undefined,
       caption: '',
       isEdited: false,
     };

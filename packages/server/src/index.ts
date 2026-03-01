@@ -60,15 +60,21 @@ const app = new Elysia()
         lastPingAt: Date.now(),
       };
 
-      void handleOpen(elysiaWs);
+      void handleOpen(elysiaWs).catch((error: unknown) => {
+        console.error('[WS] Open handler failed:', error);
+      });
     },
     message(ws, message) {
       const elysiaWs = ws as unknown as ServerWebSocket<WSConnection>;
-      void handleMessage(elysiaWs, message);
+      void handleMessage(elysiaWs, message).catch((error: unknown) => {
+        console.error('[WS] Message handler failed:', error);
+      });
     },
     close(ws) {
       const elysiaWs = ws as unknown as ServerWebSocket<WSConnection>;
-      void handleClose(elysiaWs);
+      void handleClose(elysiaWs).catch((error: unknown) => {
+        console.error('[WS] Close handler failed:', error);
+      });
     },
   });
 
@@ -96,7 +102,9 @@ app.onError(({ error, code }) => {
 });
 
 sessionManager.on('session:started', (sessionId) => {
-  void notifySessionStarted(sessionId);
+  void notifySessionStarted(sessionId).catch((error: unknown) => {
+    console.error('[Server] Failed to notify started session:', error);
+  });
 });
 
 async function shutdown(): Promise<void> {

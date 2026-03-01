@@ -1,7 +1,33 @@
 import { Elysia, t } from 'elysia';
-import type { TypeStep } from '@stepwise/shared';
+import type { Step } from '@stepwise/shared';
 import { sessionManager } from '../services/SessionManager.js';
 import { ERROR_CODES } from '@stepwise/shared';
+import { notifyStepDeleted } from '../ws/handler.js';
+
+function normalizeSessionSteps(session: { steps: unknown }): Step[] {
+  const rawSteps = Array.isArray(session.steps) ? session.steps : [];
+  const normalized: Step[] = [];
+
+  for (const candidate of rawSteps) {
+    if (!candidate || typeof candidate !== 'object') {
+      continue;
+    }
+
+    const step = candidate as Partial<Step> & { id?: unknown };
+    if (typeof step.id !== 'string' || step.id.length === 0) {
+      continue;
+    }
+
+    normalized.push(step as Step);
+  }
+
+  for (let i = 0; i < normalized.length; i++) {
+    normalized[i]!.index = i;
+  }
+
+  session.steps = normalized;
+  return normalized;
+}
 
 export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
   .post(
@@ -138,30 +164,45 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
   .get(
     '/:sessionId/steps',
     async ({ params, headers }) => {
-      const token = headers['authorization']?.replace('Bearer ', '');
-      
-      if (!token || !sessionManager.validateToken(params.sessionId, token)) {
-        return { 
-          success: false, 
-          error: { 
-            code: ERROR_CODES.INVALID_TOKEN, 
-            message: 'Invalid or missing token' 
-          } 
+      try {
+        const token = headers['authorization']?.replace('Bearer ', '');
+        
+        if (!token || !sessionManager.validateToken(params.sessionId, token)) {
+          return { 
+            success: false, 
+            error: { 
+              code: ERROR_CODES.INVALID_TOKEN, 
+              message: 'Invalid or missing token' 
+            } 
+          };
+        }
+        
+        const session = sessionManager.getSession(params.sessionId);
+        if (!session) {
+          return { 
+            success: false, 
+            error: { 
+              code: ERROR_CODES.SESSION_NOT_FOUND, 
+              message: 'Session not found' 
+            } 
+          };
+        }
+
+        const steps = normalizeSessionSteps(session);
+        return { success: true, data: steps };
+      } catch (error) {
+        console.error('[SessionRoutes] Failed to fetch steps', {
+          sessionId: params.sessionId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return {
+          success: false,
+          error: {
+            code: ERROR_CODES.IMPORT_FAILED,
+            message: error instanceof Error ? error.message : 'Failed to get steps',
+          },
         };
       }
-      
-      const session = sessionManager.getSession(params.sessionId);
-      if (!session) {
-        return { 
-          success: false, 
-          error: { 
-            code: ERROR_CODES.SESSION_NOT_FOUND, 
-            message: 'Session not found' 
-          } 
-        };
-      }
-      
-      return { success: true, data: session.steps };
     },
     {
       params: t.Object({
@@ -196,7 +237,8 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
         };
       }
 
-      const stepIndex = session.steps.findIndex(s => s.id === params.stepId);
+      const steps = normalizeSessionSteps(session);
+      const stepIndex = steps.findIndex(s => s.id === params.stepId);
       if (stepIndex === -1) {
         return {
           success: false,
@@ -207,7 +249,7 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
         };
       }
 
-      const step = session.steps[stepIndex]!;
+      const step = steps[stepIndex]!;
 
       const updatedStep = { ...step };
 
@@ -217,14 +259,14 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
       }
 
       if (body.redactScreenshot !== undefined) {
-        (step as TypeStep & { redactScreenshot?: boolean }).redactScreenshot = body.redactScreenshot;
+        (step as Step & { redactScreenshot?: boolean }).redactScreenshot = body.redactScreenshot;
       }
 
       if (body.redactedScreenshotPath !== undefined) {
-        (step as TypeStep & { redactedScreenshotPath?: string }).redactedScreenshotPath = body.redactedScreenshotPath;
+        (step as Step & { redactedScreenshotPath?: string }).redactedScreenshotPath = body.redactedScreenshotPath;
       }
 
-      session.steps[stepIndex] = updatedStep;
+      steps[stepIndex] = updatedStep;
 
       return { success: true, data: updatedStep };
     },
@@ -267,6 +309,8 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
         };
       }
 
+      normalizeSessionSteps(session);
+
       try {
         const result = await sessionManager.toggleRedaction(
           params.sessionId,
@@ -304,47 +348,61 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
   .delete(
     '/:sessionId/steps/:stepId',
     async ({ params, headers }) => {
-      const token = headers['authorization']?.replace('Bearer ', '');
-      
-      if (!token || !sessionManager.validateToken(params.sessionId, token)) {
-        return { 
-          success: false, 
-          error: { 
-            code: ERROR_CODES.INVALID_TOKEN, 
-            message: 'Invalid or missing token' 
-          } 
+      try {
+        const token = headers['authorization']?.replace('Bearer ', '');
+        
+        if (!token || !sessionManager.validateToken(params.sessionId, token)) {
+          return { 
+            success: false, 
+            error: { 
+              code: ERROR_CODES.INVALID_TOKEN, 
+              message: 'Invalid or missing token' 
+            } 
+          };
+        }
+        
+        const session = sessionManager.getSession(params.sessionId);
+        if (!session) {
+          return { 
+            success: false, 
+            error: { 
+              code: ERROR_CODES.SESSION_NOT_FOUND, 
+              message: 'Session not found' 
+            } 
+          };
+        }
+
+        const steps = normalizeSessionSteps(session);
+        const stepIndex = steps.findIndex((step) => step.id === params.stepId);
+
+        if (stepIndex === -1) {
+          return { success: true, data: false };
+        }
+
+        steps.splice(stepIndex, 1);
+
+        for (let i = stepIndex; i < steps.length; i++) {
+          steps[i]!.index = i;
+        }
+
+        session.steps = steps;
+        notifyStepDeleted(session.id, params.stepId);
+
+        return { success: true, data: true };
+      } catch (error) {
+        console.error('[SessionRoutes] Failed to delete step', {
+          sessionId: params.sessionId,
+          stepId: params.stepId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return {
+          success: false,
+          error: {
+            code: ERROR_CODES.IMPORT_FAILED,
+            message: error instanceof Error ? error.message : 'Failed to delete step',
+          },
         };
       }
-      
-      const session = sessionManager.getSession(params.sessionId);
-      if (!session) {
-        return { 
-          success: false, 
-          error: { 
-            code: ERROR_CODES.SESSION_NOT_FOUND, 
-            message: 'Session not found' 
-          } 
-        };
-      }
-      
-      const index = session.steps.findIndex(s => s.id === params.stepId);
-      if (index === -1) {
-        return { 
-          success: false, 
-          error: { 
-            code: ERROR_CODES.STEP_NOT_FOUND, 
-            message: 'Step not found' 
-          } 
-        };
-      }
-      
-      session.steps.splice(index, 1);
-      
-      for (let i = index; i < session.steps.length; i++) {
-        session.steps[i]!.index = i;
-      }
-      
-      return { success: true, data: true };
     },
     {
       params: t.Object({

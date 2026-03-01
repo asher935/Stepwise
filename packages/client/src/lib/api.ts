@@ -49,10 +49,21 @@ class ApiClient {
     });
 
     const raw = await response.text();
-    const parsed = raw.length > 0 ? JSON.parse(raw) as ApiResponse<T> : null;
-    const result = parsed ?? { success: response.ok };
+    let parsed: ApiResponse<T> | null = null;
+    if (raw.length > 0) {
+      try {
+        parsed = JSON.parse(raw) as ApiResponse<T>;
+      } catch {
+        parsed = null;
+      }
+    }
+    const result = parsed ?? { success: response.ok } as ApiResponse<T>;
 
-    if (!response.ok || !result.success) {
+    if (!response.ok) {
+      throw new Error(result.error?.message ?? `Request failed (${response.status})`);
+    }
+
+    if (!result.success) {
       throw new Error(result.error?.message ?? 'Request failed');
     }
 

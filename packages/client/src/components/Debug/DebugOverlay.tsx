@@ -34,6 +34,8 @@ function describeClientMessage(message: ClientMessage): string {
       return 'replay:resume';
     case 'replay:stop':
       return 'replay:stop';
+    case 'settings:highlight':
+      return `settings:highlight ${message.color}`;
   }
 }
 

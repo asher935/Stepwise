@@ -214,6 +214,15 @@ export function notifyStepDeleted(sessionId: string, stepId: string): void {
   broadcastToSession(sessionId, { type: 'step:deleted', stepId });
 }
 
+export function getSessionRecorder(sessionId: string): Recorder | null {
+  for (const [ws, state] of connections) {
+    if (ws.data.sessionId === sessionId && state.recorder) {
+      return state.recorder;
+    }
+  }
+  return null;
+}
+
 /**
  * Checks rate limit for a connection
  */

@@ -100,4 +100,21 @@ describe('POST /api/sessions/:sessionId/steps', () => {
     expect(session.steps[1]?.id).toBe('step-inserted');
     expect(session.steps[1]?.index).toBe(1);
   });
+
+  it('returns an error when auto-detect insert is requested without active recorder', async () => {
+    const { sessionId, token } = await createSession();
+
+    const response = await app.handle(new Request(`http://localhost/api/sessions/${sessionId}/steps`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ index: 0, autoDetect: true }),
+    }));
+
+    const result = await response.json() as InsertResponse;
+    expect(result.success).toBe(false);
+    expect(result.error?.message).toBe('Insert auto-detect is only available during an active live session');
+  });
 });

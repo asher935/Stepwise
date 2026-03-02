@@ -4,6 +4,7 @@ import type {
   ImportResult,
   SessionState, 
   Step, 
+  StepLegendItem,
   StepwiseManifest,
 } from '@stepwise/shared';
 
@@ -93,7 +94,7 @@ class ApiClient {
   async updateStep(
     sessionId: string,
     stepId: string,
-    updates: { caption?: string; redactScreenshot?: boolean; redactedScreenshotPath?: string }
+    updates: { caption?: string; redactScreenshot?: boolean; redactedScreenshotPath?: string; legendItems?: StepLegendItem[] }
   ): Promise<Step> {
     return this.request('PATCH', `/sessions/${sessionId}/steps/${stepId}`, updates);
   }
@@ -110,8 +111,16 @@ class ApiClient {
     await this.request('DELETE', `/sessions/${sessionId}/steps/${stepId}`);
   }
 
-  async insertStep(sessionId: string, index: number, step: Step): Promise<Step[]> {
-    return this.request('POST', `/sessions/${sessionId}/steps`, { index, step });
+  async insertStep(
+    sessionId: string,
+    index: number,
+    options: { step?: Step; autoDetect?: boolean }
+  ): Promise<Step[]> {
+    return this.request('POST', `/sessions/${sessionId}/steps`, {
+      index,
+      step: options.step,
+      autoDetect: options.autoDetect,
+    });
   }
 
   async exportSession(

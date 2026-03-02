@@ -1,4 +1,4 @@
-import type { SessionState, Step, ElementInfo } from '@stepwise/shared';
+import type { SessionState, Step, ElementInfo, StepLegendItem } from '@stepwise/shared';
 import { create } from 'zustand';
 import { api } from '../lib/api';
 import { wsClient } from '../lib/ws';
@@ -43,10 +43,11 @@ interface SessionStore {
   createSession: () => Promise<void>;
   startSession: (startUrl?: string) => Promise<void>;
   endSession: () => Promise<void>;
-  updateStep: (stepId: string, updates: { caption?: string; redactScreenshot?: boolean; redactedScreenshotPath?: string }) => Promise<void>;
+  updateStep: (stepId: string, updates: { caption?: string; redactScreenshot?: boolean; redactedScreenshotPath?: string; legendItems?: StepLegendItem[] }) => Promise<void>;
   toggleRedaction: (stepId: string, redact: boolean) => Promise<string | undefined>;
   deleteStep: (stepId: string) => Promise<void>;
   insertStep: (index: number, step: Omit<Step, 'index'>) => Promise<void>;
+  insertDetectedStep: (index: number) => Promise<void>;
   setSteps: (steps: Step[]) => void;
   setFrame: (frame: string) => void;
   setConnected: (connected: boolean) => void;
@@ -126,7 +127,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     }
   },
 
-  updateStep: async (stepId: string, updates: { caption?: string; redactScreenshot?: boolean; redactedScreenshotPath?: string }) => {
+  updateStep: async (stepId: string, updates: { caption?: string; redactScreenshot?: boolean; redactedScreenshotPath?: string; legendItems?: StepLegendItem[] }) => {
     const { sessionId, steps, localStepIds } = get();
     if (!sessionId) return;
 
@@ -245,7 +246,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     }
 
     try {
-      const syncedSteps = await api.insertStep(sessionId, index, newStep);
+      const syncedSteps = await api.insertStep(sessionId, index, { step: newStep });
       const syncedLocalStepIds = new Set(get().localStepIds);
       syncedLocalStepIds.delete(newStep.id);
       set({
@@ -255,6 +256,24 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     } catch (error) {
       set({
         error: error instanceof Error ? error.message : 'Failed to insert step',
+      });
+    }
+  },
+
+  insertDetectedStep: async (index: number) => {
+    const { sessionId } = get();
+    if (!sessionId) {
+      return;
+    }
+
+    try {
+      const syncedSteps = await api.insertStep(sessionId, index, { autoDetect: true });
+      set({
+        steps: syncedSteps,
+      });
+    } catch (error) {
+      set({
+        error: error instanceof Error ? error.message : 'Failed to insert detected step',
       });
     }
   },

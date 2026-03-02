@@ -10,6 +10,8 @@ interface StepInsertionPointProps {
 
 export function StepInsertionPoint({ index, alwaysExpanded = false }: StepInsertionPointProps) {
   const insertStep = useSessionStore((s) => s.insertStep);
+  const insertDetectedStep = useSessionStore((s) => s.insertDetectedStep);
+  const sessionId = useSessionStore((s) => s.sessionId);
   const currentFrame = useSessionStore((s) => s.currentFrame);
   const [isHovered, setIsHovered] = useState(false);
   const isExpanded = alwaysExpanded || isHovered;
@@ -36,6 +38,11 @@ export function StepInsertionPoint({ index, alwaysExpanded = false }: StepInsert
       isEdited: false,
     };
     
+    if (sessionId) {
+      void insertDetectedStep(index);
+      return;
+    }
+
     void insertStep(index, newStep);
   };
 

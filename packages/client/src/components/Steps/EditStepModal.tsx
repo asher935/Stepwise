@@ -1,6 +1,9 @@
 import { useState, useCallback, useEffect } from 'react';
 import { X, Download, Check, Edit3, Image as ImageIcon, Eye, EyeOff } from 'lucide-react';
 import { createPortal } from 'react-dom';
+import type { StepLegendItem } from '@stepwise/shared';
+import { StepLegendOverlay } from './StepLegendOverlay';
+import { useSessionStore } from '@/stores/sessionStore';
 
 interface EditStepModalProps {
   open: boolean;
@@ -10,12 +13,31 @@ interface EditStepModalProps {
   stepNumber: number;
   caption: string;
   onSaveCaption: (caption: string) => Promise<void>;
+  legendItems?: StepLegendItem[];
+  onSaveLegendItems?: (legendItems: StepLegendItem[], caption: string) => Promise<void>;
   onToggleRedaction?: (redact: boolean) => Promise<string | undefined>;
   canToggleRedaction?: boolean;
   isRedacted?: boolean;
 }
 
-export function EditStepModal({ open, onOpenChange, screenshotDataUrl, originalScreenshotDataUrl, stepNumber, caption, onSaveCaption, onToggleRedaction, canToggleRedaction, isRedacted }: EditStepModalProps) {
+function buildLegendCaption(items: StepLegendItem[]): string {
+  if (items.length === 0) {
+    return 'Review the current view';
+  }
+  const lines = items.map((item) => `(${item.bubbleNumber}) ${item.label.toLowerCase()}`);
+  return ['Identify controls on this view:', ...lines].join('\n');
+}
+
+function hexToRgba(hex: string, alpha: number): string {
+  const normalized = hex.replace('#', '');
+  const r = Number.parseInt(normalized.slice(0, 2), 16);
+  const g = Number.parseInt(normalized.slice(2, 4), 16);
+  const b = Number.parseInt(normalized.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+export function EditStepModal({ open, onOpenChange, screenshotDataUrl, originalScreenshotDataUrl, stepNumber, caption, onSaveCaption, legendItems, onSaveLegendItems, onToggleRedaction, canToggleRedaction, isRedacted }: EditStepModalProps) {
+  const stepHighlightColor = useSessionStore((s) => s.stepHighlightColor);
   const [editedCaption, setEditedCaption] = useState(caption);
   const [isSaving, setIsSaving] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -23,6 +45,9 @@ export function EditStepModal({ open, onOpenChange, screenshotDataUrl, originalS
   const [isTogglingRedaction, setIsTogglingRedaction] = useState(false);
   const [originalScreenshotUrl, setOriginalScreenshotUrl] = useState(screenshotDataUrl);
   const [redactedScreenshotUrl, setRedactedScreenshotUrl] = useState<string | undefined>(undefined);
+  const [editableLegendItems, setEditableLegendItems] = useState<StepLegendItem[]>(legendItems ?? []);
+  const [imageNaturalSize, setImageNaturalSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
+  const [isUpdatingLegend, setIsUpdatingLegend] = useState(false);
 
   useEffect(() => {
     setRedactEnabled(isRedacted ?? false);
@@ -54,8 +79,9 @@ export function EditStepModal({ open, onOpenChange, screenshotDataUrl, originalS
     if (open) {
       setIsEditing(false);
       setEditedCaption(caption);
+      setEditableLegendItems(legendItems ?? []);
     }
-  }, [open, caption]);
+  }, [open, caption, legendItems]);
 
   useEffect(() => {
     if (!isEditing) {
@@ -116,6 +142,28 @@ export function EditStepModal({ open, onOpenChange, screenshotDataUrl, originalS
       setIsTogglingRedaction(false);
     }
   }, [onToggleRedaction, redactEnabled]);
+
+  const handleRemoveLegendItem = useCallback(async (bubbleNumber: number) => {
+    if (!onSaveLegendItems) {
+      return;
+    }
+
+    const nextItems = editableLegendItems
+      .filter((item) => item.bubbleNumber !== bubbleNumber)
+      .map((item, index) => ({ ...item, bubbleNumber: index + 1 }));
+    const nextCaption = buildLegendCaption(nextItems);
+
+    setIsUpdatingLegend(true);
+    try {
+      await onSaveLegendItems(nextItems, nextCaption);
+      setEditableLegendItems(nextItems);
+      if (!isEditing) {
+        setEditedCaption(nextCaption);
+      }
+    } finally {
+      setIsUpdatingLegend(false);
+    }
+  }, [editableLegendItems, onSaveLegendItems, isEditing]);
 
   if (!open) return null;
 
@@ -273,6 +321,55 @@ export function EditStepModal({ open, onOpenChange, screenshotDataUrl, originalS
             </div>
           )}
 
+          {editableLegendItems.length > 0 && onSaveLegendItems && (
+            <div className="space-y-3">
+              <div className="bg-[#FDF2E9] border border-black/5 rounded-[24px] py-3 px-4">
+                <div className="w-full flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className="text-[10px] font-black text-[#BBAFA7] uppercase tracking-widest">
+                      Highlighted Elements
+                    </span>
+                    <span
+                      className="px-2 py-0.5 rounded-full text-[10px] font-black"
+                      style={{
+                        color: stepHighlightColor,
+                        backgroundColor: hexToRgba(stepHighlightColor, 0.14),
+                      }}
+                    >
+                      {editableLegendItems.length}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="mt-3 max-h-56 overflow-y-auto space-y-2 pr-1">
+                  {editableLegendItems.map((item) => (
+                    <div key={`${item.bubbleNumber}:${item.label}`} className="flex items-center justify-between rounded-xl bg-white/70 px-3 py-2 border border-black/5">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div
+                          className="w-6 h-6 rounded-full text-white text-[11px] font-black flex items-center justify-center"
+                          style={{ backgroundColor: stepHighlightColor }}
+                        >
+                          {item.bubbleNumber}
+                        </div>
+                        <div className="text-sm font-bold text-[#2D241E] truncate">{item.label}</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void handleRemoveLegendItem(item.bubbleNumber);
+                        }}
+                        disabled={isUpdatingLegend}
+                        className="text-xs font-black uppercase tracking-wider text-red-500 hover:text-red-600 disabled:opacity-50"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="relative bg-[#FDF2E9] rounded-[32px] overflow-hidden border border-black/5 min-h-[300px]">
             {originalScreenshotUrl ? (
               <div className="relative">
@@ -280,6 +377,19 @@ export function EditStepModal({ open, onOpenChange, screenshotDataUrl, originalS
                   src={redactEnabled && redactedScreenshotUrl ? redactedScreenshotUrl : originalScreenshotUrl}
                   alt={`Step ${stepNumber} screenshot`}
                   className="w-full h-auto"
+                  onLoad={(event) => {
+                    const image = event.currentTarget;
+                    setImageNaturalSize({
+                      width: image.naturalWidth,
+                      height: image.naturalHeight,
+                    });
+                  }}
+                />
+                <StepLegendOverlay
+                  legendItems={editableLegendItems}
+                  imageWidth={imageNaturalSize.width}
+                  imageHeight={imageNaturalSize.height}
+                  highlightColor={stepHighlightColor}
                 />
                 {redactEnabled && (
                   <div className="absolute top-4 right-4">

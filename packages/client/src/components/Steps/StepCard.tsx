@@ -165,6 +165,10 @@ export function StepCard({ step }: StepCardProps) {
         onSaveCaption={async (newCaption: string) => {
           await updateStep(step.id, { caption: newCaption });
         }}
+        legendItems={step.legendItems}
+        onSaveLegendItems={async (legendItems, nextCaption) => {
+          await updateStep(step.id, { legendItems, caption: nextCaption });
+        }}
         onToggleRedaction={async (redact: boolean) => {
           return await toggleRedaction(step.id, redact);
         }}

@@ -10,6 +10,14 @@ export interface StepHighlight {
   elementText: string | null;
 }
 
+export interface StepLegendItem {
+  bubbleNumber: number;
+  label: string;
+  kind: 'field' | 'button';
+  semanticKey?: 'username' | 'password';
+  boundingBox: { x: number; y: number; width: number; height: number };
+}
+
 /** Base step interface */
 export interface BaseStep {
   id: string;
@@ -25,6 +33,7 @@ export interface BaseStep {
   redactedScreenshotPath?: string;
   /** Stores the original screenshot URL before redaction is applied */
   originalScreenshotDataUrl?: string;
+  legendItems?: StepLegendItem[];
 }
 
 /** Click action step */
@@ -101,4 +110,5 @@ export interface UpdateStepRequest {
   isEdited?: boolean;
   redactScreenshot?: boolean;
   redactedScreenshotPath?: string;
+  legendItems?: StepLegendItem[];
 }

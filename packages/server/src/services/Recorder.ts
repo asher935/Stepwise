@@ -1,7 +1,7 @@
 import { nanoid } from 'nanoid';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { Step, ClickStep, TypeStep, NavigateStep, ScrollStep, PasteStep, StepHighlight } from '@stepwise/shared';
+import type { Step, ClickStep, TypeStep, NavigateStep, ScrollStep, PasteStep, StepHighlight, StepLegendItem } from '@stepwise/shared';
 import type { ServerSession } from '../types/session.js';
 import { CDPBridge } from './CDPBridge.js';
 import { redactionService } from './RedactionService.js';
@@ -26,6 +26,15 @@ type ElementInfo = {
 };
 
 type Rect = { x: number; y: number; width: number; height: number };
+type InteractiveKind = 'field' | 'button';
+type SemanticKey = 'username' | 'password';
+
+type DetectedInteractiveElement = {
+  kind: InteractiveKind;
+  label: string;
+  semanticKey?: SemanticKey;
+  boundingBox: Rect;
+};
 
 interface RecorderOptions {
   session: ServerSession;
@@ -173,6 +182,41 @@ export class Recorder {
     return `data:${mimeType};base64,${buffer.toString('base64')}`;
   }
 
+  async createInsertStepFromCurrentView(): Promise<ClickStep | null> {
+    const elements = await this.detectInteractiveElementsInView();
+    const legendItems = this.buildLegendItems(elements);
+    const capture = await this.captureScreenshot(0);
+    const screenshotPath = await this.saveScreenshot(capture.screenshotData);
+    const screenshotDataUrl = this.toScreenshotDataUrl(capture.screenshotData);
+    const targetLegendItem = legendItems.find((item) => item.semanticKey === 'username')
+      ?? legendItems.find((item) => item.semanticKey === 'password')
+      ?? legendItems[0];
+
+    const target: StepHighlight = targetLegendItem
+      ? {
+          selector: null,
+          boundingBox: targetLegendItem.boundingBox,
+          elementTag: targetLegendItem.kind === 'button' ? 'button' : 'input',
+          elementText: targetLegendItem.label,
+        }
+      : {
+          selector: null,
+          boundingBox: { x: 0, y: 0, width: 0, height: 0 },
+          elementTag: 'div',
+          elementText: null,
+        };
+
+    return {
+      ...this.createBaseStep(screenshotPath, screenshotDataUrl),
+      action: 'click',
+      target,
+      button: 'left',
+      redactionRects: capture.redactionRects,
+      legendItems,
+      caption: this.buildLegendCaption(legendItems),
+    };
+  }
+
   private clipRectToScreenshotSpace(
     rect: Rect,
     clip?: Rect
@@ -198,6 +242,192 @@ export class Recorder {
       width: right - left,
       height: bottom - top,
     };
+  }
+
+  private normalizeLegendLabel(label: string): string {
+    const normalized = label.trim().replace(/\s+/g, ' ');
+    if (!normalized) return 'Unlabeled';
+    if (normalized.length <= 60) return normalized;
+    return `${normalized.slice(0, 57)}...`;
+  }
+
+  private detectSemanticKey(label: string): SemanticKey | undefined {
+    const normalized = label.toLowerCase();
+    if (normalized.includes('username') || normalized.includes('user name') || normalized.includes('email')) {
+      return 'username';
+    }
+    if (normalized.includes('password') || normalized.includes('passcode') || normalized.includes('pwd')) {
+      return 'password';
+    }
+    return undefined;
+  }
+
+  private toLegendItem(
+    element: DetectedInteractiveElement,
+    bubbleNumber: number
+  ): StepLegendItem {
+    return {
+      bubbleNumber,
+      label: element.label,
+      kind: element.kind,
+      semanticKey: element.semanticKey,
+      boundingBox: element.boundingBox,
+    };
+  }
+
+  private buildLegendItems(elements: DetectedInteractiveElement[]): StepLegendItem[] {
+    const username = elements.find((element) => element.semanticKey === 'username');
+    const password = elements.find((element) => element.semanticKey === 'password');
+    const prioritized: DetectedInteractiveElement[] = [];
+
+    if (username) prioritized.push(username);
+    if (password && password !== username) prioritized.push(password);
+
+    for (const element of elements) {
+      if (prioritized.includes(element)) {
+        continue;
+      }
+      prioritized.push(element);
+    }
+
+    return prioritized.slice(0, 12).map((element, index) => this.toLegendItem(element, index + 1));
+  }
+
+  private buildLegendCaption(legendItems: StepLegendItem[]): string {
+    if (legendItems.length === 0) {
+      return 'Review the current view';
+    }
+    const lines = legendItems.map((item) => `(${item.bubbleNumber}) ${item.label.toLowerCase()}`);
+    return ['Identify controls on this view:', ...lines].join('\n');
+  }
+
+  private async detectInteractiveElementsInView(): Promise<DetectedInteractiveElement[]> {
+    const page = this.session.page;
+    if (!page) return [];
+
+    try {
+      const rawElements = await page.evaluate(() => {
+        const candidates = Array.from(document.querySelectorAll(
+          'input, textarea, select, button, a[href], [role="button"], [role="link"], [role="textbox"], [role="searchbox"], [role="combobox"]'
+        ));
+        const seen = new Set<string>();
+        const result: Array<{
+          kind: 'field' | 'button';
+          label: string;
+          boundingBox: { x: number; y: number; width: number; height: number };
+        }> = [];
+
+        const getLabelText = (el: Element): string => {
+          const ariaLabel = el.getAttribute('aria-label');
+          if (ariaLabel && ariaLabel.trim()) return ariaLabel.trim();
+
+          const labelledBy = el.getAttribute('aria-labelledby');
+          if (labelledBy) {
+            const value = labelledBy
+              .split(/\s+/)
+              .map((id) => document.getElementById(id)?.textContent?.trim() ?? '')
+              .filter(Boolean)
+              .join(' ')
+              .trim();
+            if (value) return value;
+          }
+
+          if ('labels' in el) {
+            const labels = (el as HTMLInputElement).labels;
+            const firstLabel = labels?.[0]?.textContent?.trim();
+            if (firstLabel) return firstLabel;
+          }
+
+          const ancestorLabel = el.closest('label')?.textContent?.trim();
+          if (ancestorLabel) return ancestorLabel;
+
+          const input = el as HTMLInputElement;
+          if (typeof input.placeholder === 'string' && input.placeholder.trim()) return input.placeholder.trim();
+          if (typeof input.name === 'string' && input.name.trim()) return input.name.trim();
+          if (typeof input.id === 'string' && input.id.trim()) return input.id.trim();
+
+          const title = el.getAttribute('title');
+          if (title && title.trim()) return title.trim();
+
+          const text = el.textContent?.trim();
+          if (text) return text;
+
+          return '';
+        };
+
+        const isFieldElement = (el: Element): boolean => {
+          const tagName = el.tagName.toLowerCase();
+          if (tagName === 'input' || tagName === 'textarea' || tagName === 'select') return true;
+          const role = (el.getAttribute('role') || '').toLowerCase();
+          return role === 'textbox' || role === 'searchbox' || role === 'combobox';
+        };
+
+        const shouldSkipInput = (el: HTMLInputElement): boolean => {
+          const type = (el.type || 'text').toLowerCase();
+          return ['hidden', 'checkbox', 'radio', 'range', 'color', 'file', 'image'].includes(type);
+        };
+
+        for (const element of candidates) {
+          if (element instanceof HTMLInputElement && shouldSkipInput(element)) {
+            continue;
+          }
+
+          const rect = element.getBoundingClientRect();
+          if (rect.width < 2 || rect.height < 2) {
+            continue;
+          }
+
+          const style = window.getComputedStyle(element as HTMLElement);
+          if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) {
+            continue;
+          }
+
+          if (rect.bottom <= 0 || rect.right <= 0 || rect.top >= window.innerHeight || rect.left >= window.innerWidth) {
+            continue;
+          }
+
+          const rounded = {
+            x: Math.max(0, Math.round(rect.x)),
+            y: Math.max(0, Math.round(rect.y)),
+            width: Math.round(rect.width),
+            height: Math.round(rect.height),
+          };
+
+          const label = getLabelText(element);
+          const kind = isFieldElement(element) ? 'field' : 'button';
+          const key = `${kind}:${label.toLowerCase()}:${rounded.x}:${rounded.y}:${rounded.width}:${rounded.height}`;
+          if (seen.has(key)) {
+            continue;
+          }
+          seen.add(key);
+
+          result.push({
+            kind,
+            label: label || (kind === 'field' ? 'Field' : 'Button'),
+            boundingBox: rounded,
+          });
+        }
+
+        return result;
+      });
+
+      return rawElements
+        .map((element) => {
+          const normalizedLabel = this.normalizeLegendLabel(element.label);
+          return {
+            kind: element.kind,
+            label: normalizedLabel,
+            semanticKey: this.detectSemanticKey(normalizedLabel),
+            boundingBox: element.boundingBox,
+          };
+        })
+        .sort((a, b) => {
+          if (a.boundingBox.y !== b.boundingBox.y) return a.boundingBox.y - b.boundingBox.y;
+          return a.boundingBox.x - b.boundingBox.x;
+        });
+    } catch {
+      return [];
+    }
   }
 
   private async detectInputRedactionRects(clip?: Rect): Promise<Rect[]> {

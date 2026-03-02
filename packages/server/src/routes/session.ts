@@ -1,8 +1,8 @@
 import { Elysia, t } from 'elysia';
-import type { Step } from '@stepwise/shared';
+import type { Step, StepLegendItem } from '@stepwise/shared';
 import { sessionManager } from '../services/SessionManager.js';
 import { ERROR_CODES } from '@stepwise/shared';
-import { notifyStepDeleted } from '../ws/handler.js';
+import { getSessionRecorder, notifyStepDeleted } from '../ws/handler.js';
 
 function normalizeSessionSteps(session: { steps: unknown }): Step[] {
   const rawSteps = Array.isArray(session.steps) ? session.steps : [];
@@ -46,6 +46,22 @@ function isInsertableStep(value: unknown): value is Step {
 
   const step = value as Partial<Step> & { id?: unknown; action?: unknown };
   return typeof step.id === 'string' && step.id.length > 0 && isStepAction(step.action);
+}
+
+function isLegendItem(value: unknown): value is StepLegendItem {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const item = value as Partial<StepLegendItem> & { bubbleNumber?: unknown; label?: unknown; kind?: unknown; boundingBox?: unknown };
+  if (typeof item.bubbleNumber !== 'number' || !Number.isFinite(item.bubbleNumber)) return false;
+  if (typeof item.label !== 'string') return false;
+  if (item.kind !== 'field' && item.kind !== 'button') return false;
+  if (!item.boundingBox || typeof item.boundingBox !== 'object') return false;
+  const box = item.boundingBox as { x?: unknown; y?: unknown; width?: unknown; height?: unknown };
+  if (typeof box.x !== 'number' || typeof box.y !== 'number' || typeof box.width !== 'number' || typeof box.height !== 'number') return false;
+  if (item.semanticKey !== undefined && item.semanticKey !== 'username' && item.semanticKey !== 'password') return false;
+  return true;
 }
 
 export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
@@ -256,7 +272,22 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
         };
       }
 
-      if (!isInsertableStep(body.step)) {
+      let stepToInsert: Step | null = null;
+      if (body.autoDetect) {
+        const recorder = getSessionRecorder(params.sessionId);
+        if (!recorder) {
+          return {
+            success: false,
+            error: {
+              code: ERROR_CODES.IMPORT_FAILED,
+              message: 'Insert auto-detect is only available during an active live session',
+            },
+          };
+        }
+        stepToInsert = await recorder.createInsertStepFromCurrentView();
+      } else if (isInsertableStep(body.step)) {
+        stepToInsert = body.step;
+      } else {
         return {
           success: false,
           error: {
@@ -266,9 +297,19 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
         };
       }
 
+      if (!stepToInsert) {
+        return {
+          success: false,
+          error: {
+            code: ERROR_CODES.IMPORT_FAILED,
+            message: 'Failed to build insert step from current view',
+          },
+        };
+      }
+
       const steps = normalizeSessionSteps(session);
       const insertionIndex = Math.max(0, Math.min(Math.floor(body.index), steps.length));
-      steps.splice(insertionIndex, 0, { ...body.step, index: insertionIndex });
+      steps.splice(insertionIndex, 0, { ...stepToInsert, index: insertionIndex });
 
       for (let i = 0; i < steps.length; i++) {
         steps[i]!.index = i;
@@ -283,7 +324,8 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
       }),
       body: t.Object({
         index: t.Number(),
-        step: t.Unknown(),
+        step: t.Optional(t.Unknown()),
+        autoDetect: t.Optional(t.Boolean()),
       }),
     }
   )
@@ -343,6 +385,14 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
         (step as Step & { redactedScreenshotPath?: string }).redactedScreenshotPath = body.redactedScreenshotPath;
       }
 
+      if (body.legendItems !== undefined && Array.isArray(body.legendItems)) {
+        const legendItems = body.legendItems.filter(isLegendItem).map((item, index) => ({
+          ...item,
+          bubbleNumber: index + 1,
+        }));
+        (updatedStep as Step & { legendItems?: StepLegendItem[] }).legendItems = legendItems;
+      }
+
       steps[stepIndex] = updatedStep;
 
       return { success: true, data: updatedStep };
@@ -356,6 +406,7 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
         caption: t.Optional(t.String()),
         redactScreenshot: t.Optional(t.Boolean()),
         redactedScreenshotPath: t.Optional(t.String()),
+        legendItems: t.Optional(t.Array(t.Unknown())),
       }),
     }
   )

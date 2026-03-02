@@ -25,7 +25,7 @@ function buildLegendCaption(items: StepLegendItem[]): string {
     return 'Review the current view';
   }
   const lines = items.map((item) => `(${item.bubbleNumber}) ${item.label.toLowerCase()}`);
-  return ['Identify controls on this view:', ...lines].join('\n');
+  return ['On this page:', ...lines].join('\n');
 }
 
 function hexToRgba(hex: string, alpha: number): string {

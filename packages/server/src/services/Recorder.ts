@@ -173,6 +173,7 @@ export class Recorder {
       caption: '',
       isEdited: false,
       redactScreenshot: false,
+      highlightColor: this.cdpBridge.getHighlightColor(),
       screenshotClip,
     };
   }
@@ -298,7 +299,7 @@ export class Recorder {
       return 'Review the current view';
     }
     const lines = legendItems.map((item) => `(${item.bubbleNumber}) ${item.label.toLowerCase()}`);
-    return ['Identify controls on this view:', ...lines].join('\n');
+    return ['On this page:', ...lines].join('\n');
   }
 
   private async detectInteractiveElementsInView(): Promise<DetectedInteractiveElement[]> {

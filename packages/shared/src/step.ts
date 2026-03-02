@@ -33,6 +33,7 @@ export interface BaseStep {
   redactedScreenshotPath?: string;
   /** Stores the original screenshot URL before redaction is applied */
   originalScreenshotDataUrl?: string;
+  highlightColor?: string;
   legendItems?: StepLegendItem[];
 }
 

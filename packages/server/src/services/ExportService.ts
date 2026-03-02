@@ -15,6 +15,7 @@ import { env } from '../lib/env.js';
  */
 const MAX_IMAGE_WIDTH = 600;
 const MAX_IMAGE_HEIGHT = 400;
+const EXPORT_HIGHLIGHT_COLOR = '#E67E22';
 
 /**
  * ExportService handles exporting sessions to various formats
@@ -64,6 +65,78 @@ export class ExportService {
     }
 
     return this.decodeDataUrl(step.screenshotDataUrl);
+  }
+
+  private clamp(value: number, min: number, max: number): number {
+    return Math.min(max, Math.max(min, value));
+  }
+
+  private buildLegendOverlaySvg(
+    width: number,
+    height: number,
+    step: Step
+  ): string | null {
+    const legendItems = step.legendItems ?? [];
+    if (legendItems.length === 0) {
+      return null;
+    }
+
+    const highlightColor = /^#[0-9a-fA-F]{6}$/.test(step.highlightColor ?? '')
+      ? (step.highlightColor as string)
+      : EXPORT_HIGHLIGHT_COLOR;
+
+    const rects = legendItems.map((item) => {
+      const x = this.clamp(Math.round(item.boundingBox.x), 0, width - 1);
+      const y = this.clamp(Math.round(item.boundingBox.y), 0, height - 1);
+      const rectWidth = this.clamp(Math.round(item.boundingBox.width), 1, width - x);
+      const rectHeight = this.clamp(Math.round(item.boundingBox.height), 1, height - y);
+      const bubbleCx = this.clamp(x + rectWidth + 14, 12, width - 12);
+      const bubbleCy = this.clamp(y + Math.round(rectHeight / 2), 12, height - 12);
+
+      return `
+        <rect x="${x}" y="${y}" width="${rectWidth}" height="${rectHeight}" rx="4" ry="4"
+          fill="${highlightColor}1A" stroke="${highlightColor}" stroke-width="2" />
+        <circle cx="${bubbleCx}" cy="${bubbleCy}" r="11"
+          fill="${highlightColor}" stroke="#FFFFFF" stroke-width="1.5" />
+        <text x="${bubbleCx}" y="${bubbleCy + 4}" text-anchor="middle"
+          font-family="Arial, sans-serif" font-size="10" font-weight="700" fill="#FFFFFF">${item.bubbleNumber}</text>
+      `;
+    }).join('\n');
+
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">${rects}</svg>`;
+  }
+
+  private async getExportScreenshotBuffer(step: Step): Promise<Buffer | null> {
+    const screenshotBuffer = this.getScreenshotBuffer(step);
+    if (!screenshotBuffer) {
+      return null;
+    }
+
+    if (!step.legendItems || step.legendItems.length === 0) {
+      return screenshotBuffer;
+    }
+
+    try {
+      const image = sharp(screenshotBuffer);
+      const metadata = await image.metadata();
+      const width = metadata.width;
+      const height = metadata.height;
+      if (!width || !height) {
+        return screenshotBuffer;
+      }
+
+      const overlaySvg = this.buildLegendOverlaySvg(width, height, step);
+      if (!overlaySvg) {
+        return screenshotBuffer;
+      }
+
+      return await image
+        .composite([{ input: Buffer.from(overlaySvg), top: 0, left: 0 }])
+        .jpeg({ quality: 90 })
+        .toBuffer();
+    } catch {
+      return screenshotBuffer;
+    }
   }
 
   /**
@@ -192,7 +265,7 @@ export class ExportService {
     title: string,
     options: ExportOptions
   ): Promise<ExportResult> {
-    const html = this.generateHTMLContent(title, options, false);
+    const html = await this.generateHTMLContent(title, options, false);
     const filename = `${this.sanitizeFilename(title)}.pdf`;
     const filepath = join(exportDir, filename);
 
@@ -285,7 +358,7 @@ export class ExportService {
 
       if (options.includeScreenshots !== false) {
         try {
-          const imageBuffer = this.getScreenshotBuffer(step);
+          const imageBuffer = await this.getExportScreenshotBuffer(step);
           if (!imageBuffer) {
             continue;
           }
@@ -361,28 +434,30 @@ export class ExportService {
       archive.on('error', reject);
       archive.pipe(output);
 
-      let markdown = `# ${title}\n\n`;
-      markdown += `*Generated on ${new Date().toLocaleString()}*\n\n`;
-      markdown += `---\n\n`;
+      void (async () => {
+        let markdown = `# ${title}\n\n`;
+        markdown += `*Generated on ${new Date().toLocaleString()}*\n\n`;
+        markdown += `---\n\n`;
 
-      for (const step of this.session.steps) {
-        markdown += `## Step ${step.index + 1}\n\n`;
-        markdown += `${step.caption || this.getDefaultCaption(step)}\n\n`;
+        for (const step of this.session.steps) {
+          markdown += `## Step ${step.index + 1}\n\n`;
+          markdown += `${step.caption || this.getDefaultCaption(step)}\n\n`;
 
-        if (options.includeScreenshots !== false) {
-          const imgName = `step-${step.index + 1}.jpg`;
-          const imageBuffer = this.getScreenshotBuffer(step);
-          if (imageBuffer) {
-            markdown += `![Step ${step.index + 1}](./images/${imgName})\n\n`;
-            archive.append(imageBuffer, { name: `images/${imgName}` });
+          if (options.includeScreenshots !== false) {
+            const imgName = `step-${step.index + 1}.jpg`;
+            const imageBuffer = await this.getExportScreenshotBuffer(step);
+            if (imageBuffer) {
+              markdown += `![Step ${step.index + 1}](./images/${imgName})\n\n`;
+              archive.append(imageBuffer, { name: `images/${imgName}` });
+            }
           }
+
+          markdown += `---\n\n`;
         }
 
-        markdown += `---\n\n`;
-      }
-
-      archive.append(markdown, { name: 'guide.md' });
-      void archive.finalize();
+        archive.append(markdown, { name: 'guide.md' });
+        await archive.finalize();
+      })().catch(reject);
     });
   }
 
@@ -412,23 +487,25 @@ export class ExportService {
       archive.on('error', reject);
       archive.pipe(output);
 
-      const html = this.generateHTMLContent(title, options, true);
-      archive.append(html, { name: 'index.html' });
+      void (async () => {
+        const html = await this.generateHTMLContent(title, options, true);
+        archive.append(html, { name: 'index.html' });
 
-      if (options.includeScreenshots !== false) {
-        for (const step of this.session.steps) {
-          const imgName = `step-${step.index + 1}.jpg`;
-          const imageBuffer = this.getScreenshotBuffer(step);
-          if (imageBuffer) {
-            archive.append(imageBuffer, { name: `images/${imgName}` });
+        if (options.includeScreenshots !== false) {
+          for (const step of this.session.steps) {
+            const imgName = `step-${step.index + 1}.jpg`;
+            const imageBuffer = await this.getExportScreenshotBuffer(step);
+            if (imageBuffer) {
+              archive.append(imageBuffer, { name: `images/${imgName}` });
+            }
           }
         }
-      }
 
-      const css = this.generateCSS(options.theme ?? 'light');
-      archive.append(css, { name: 'styles.css' });
+        const css = this.generateCSS(options.theme ?? 'light');
+        archive.append(css, { name: 'styles.css' });
 
-      void archive.finalize();
+        await archive.finalize();
+      })().catch(reject);
     });
   }
 
@@ -460,8 +537,8 @@ export class ExportService {
       archive.on('error', reject);
 
       archive.append(JSON.stringify(manifest, null, 2), { name: 'manifest.json' });
-      const exportedSteps = this.session.steps.map((step) => {
-        const imageBuffer = this.getScreenshotBuffer(step);
+      const exportedStepsPromises = this.session.steps.map(async (step) => {
+        const imageBuffer = await this.getExportScreenshotBuffer(step);
         if (!imageBuffer) {
           return step;
         }
@@ -473,9 +550,10 @@ export class ExportService {
           screenshotPath: screenshotName,
         };
       });
-      archive.append(JSON.stringify(exportedSteps, null, 2), { name: 'steps.json' });
-
-      void archive.finalize();
+      void Promise.all(exportedStepsPromises).then((exportedSteps) => {
+        archive.append(JSON.stringify(exportedSteps, null, 2), { name: 'steps.json' });
+        void archive.finalize();
+      }).catch(reject);
     });
 
     const finalBuffer = options.password
@@ -494,7 +572,7 @@ export class ExportService {
   /**
    * Generates HTML content
    */
-  private generateHTMLContent(title: string, options: ExportOptions, useExternalImages: boolean): string {
+  private async generateHTMLContent(title: string, options: ExportOptions, useExternalImages: boolean): Promise<string> {
     const theme = options.theme ?? 'light';
     const steps = this.session.steps;
 
@@ -502,7 +580,7 @@ export class ExportService {
     for (const step of steps) {
       let imgSrc = '';
       if (options.includeScreenshots !== false) {
-        const imageBuffer = this.getScreenshotBuffer(step);
+        const imageBuffer = await this.getExportScreenshotBuffer(step);
         if (useExternalImages) {
           imgSrc = imageBuffer ? `./images/step-${step.index + 1}.jpg` : '';
         } else if (imageBuffer) {

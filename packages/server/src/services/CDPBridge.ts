@@ -667,6 +667,10 @@ export class CDPBridge {
     this.highlightColor = color;
   }
 
+  getHighlightColor(): string {
+    return this.highlightColor;
+  }
+
   /**
    * Removes the highlight overlay from the page
    */

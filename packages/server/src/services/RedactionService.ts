@@ -22,10 +22,11 @@ export class RedactionService {
    */
   async generateRedactedScreenshot(
     screenshotPath: string,
-    redactionRect: RedactionRect,
+    redactionRect: RedactionRect | RedactionRect[],
     outputPath: string
   ): Promise<void> {
-    const redactionKey = `${screenshotPath}-${JSON.stringify(redactionRect)}`;
+    const redactionRects = Array.isArray(redactionRect) ? redactionRect : [redactionRect];
+    const redactionKey = `${screenshotPath}-${JSON.stringify(redactionRects)}`;
 
     if (this.inProgressRedactions.has(redactionKey)) {
       throw new Error('Redaction already in progress for this step');
@@ -33,7 +34,7 @@ export class RedactionService {
 
     const redactionPromise = this.doGenerateRedactedScreenshot(
       screenshotPath,
-      redactionRect,
+      redactionRects,
       outputPath
     );
 
@@ -51,7 +52,7 @@ export class RedactionService {
    */
   private async doGenerateRedactedScreenshot(
     screenshotPath: string,
-    redactionRect: RedactionRect,
+    redactionRects: RedactionRect[],
     outputPath: string
   ): Promise<void> {
     try {
@@ -61,31 +62,31 @@ export class RedactionService {
         throw new Error('Could not read image dimensions');
       }
 
-      const clampedRect = this.clampRedactionRect(
-        redactionRect,
+      const clampedRects = this.clampRedactionRects(
+        redactionRects,
         imageMetadata.width,
         imageMetadata.height
       );
 
-      if (clampedRect.width <= 0 || clampedRect.height <= 0) {
+      if (clampedRects.length === 0) {
         throw new Error('Invalid redaction rectangle (zero or negative size)');
       }
 
       await sharp(screenshotPath)
-        .composite([
-          {
+        .composite(
+          clampedRects.map((rect) => ({
             input: {
               create: {
-                width: clampedRect.width,
-                height: clampedRect.height,
+                width: rect.width,
+                height: rect.height,
                 channels: 3,
                 background: '#000000',
               },
             },
-            left: clampedRect.x,
-            top: clampedRect.y,
-          },
-        ])
+            left: rect.x,
+            top: rect.y,
+          }))
+        )
         .toFile(outputPath);
     } catch (error) {
       console.error('[RedactionService] Error generating redacted screenshot:', error);
@@ -107,6 +108,16 @@ export class RedactionService {
       width: Math.max(0, Math.min(rect.width, imageWidth - Math.max(0, rect.x))),
       height: Math.max(0, Math.min(rect.height, imageHeight - Math.max(0, rect.y))),
     };
+  }
+
+  private clampRedactionRects(
+    rects: RedactionRect[],
+    imageWidth: number,
+    imageHeight: number
+  ): RedactionRect[] {
+    return rects
+      .map((rect) => this.clampRedactionRect(rect, imageWidth, imageHeight))
+      .filter((rect) => rect.width > 0 && rect.height > 0);
   }
 
   /**
@@ -155,7 +166,7 @@ export class RedactionService {
    */
   async redact(
     screenshotData: Buffer,
-    redactionRect: RedactionRect
+    redactionRect: RedactionRect | RedactionRect[]
   ): Promise<Buffer> {
     const image = sharp(screenshotData);
     const metadata = await image.metadata();
@@ -165,31 +176,32 @@ export class RedactionService {
     }
 
     // Clamp rectangle to image bounds
-    const clampedRect = this.clampRedactionRect(
-      redactionRect,
+    const redactionRects = Array.isArray(redactionRect) ? redactionRect : [redactionRect];
+    const clampedRects = this.clampRedactionRects(
+      redactionRects,
       metadata.width,
       metadata.height
     );
 
-    if (clampedRect.width <= 0 || clampedRect.height <= 0) {
+    if (clampedRects.length === 0) {
       throw new Error('Invalid redaction rectangle (zero or negative size)');
     }
 
     return await image
-      .composite([
-        {
+      .composite(
+        clampedRects.map((rect) => ({
           input: {
             create: {
-              width: clampedRect.width,
-              height: clampedRect.height,
+              width: rect.width,
+              height: rect.height,
               channels: 3,
               background: '#000000',
             },
           },
-          left: clampedRect.x,
-          top: clampedRect.y,
-        },
-      ])
+          left: rect.x,
+          top: rect.y,
+        }))
+      )
       .toBuffer();
   }
 

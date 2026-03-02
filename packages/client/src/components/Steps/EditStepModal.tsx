@@ -11,11 +11,11 @@ interface EditStepModalProps {
   caption: string;
   onSaveCaption: (caption: string) => Promise<void>;
   onToggleRedaction?: (redact: boolean) => Promise<string | undefined>;
-  isTypeStep?: boolean;
+  canToggleRedaction?: boolean;
   isRedacted?: boolean;
 }
 
-export function EditStepModal({ open, onOpenChange, screenshotDataUrl, originalScreenshotDataUrl, stepNumber, caption, onSaveCaption, onToggleRedaction, isTypeStep, isRedacted }: EditStepModalProps) {
+export function EditStepModal({ open, onOpenChange, screenshotDataUrl, originalScreenshotDataUrl, stepNumber, caption, onSaveCaption, onToggleRedaction, canToggleRedaction, isRedacted }: EditStepModalProps) {
   const [editedCaption, setEditedCaption] = useState(caption);
   const [isSaving, setIsSaving] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -229,7 +229,7 @@ export function EditStepModal({ open, onOpenChange, screenshotDataUrl, originalS
             )}
           </div>
 
-          {isTypeStep && (
+          {canToggleRedaction && (
             <div className="space-y-3">
               <div className="text-[10px] font-black text-[#BBAFA7] uppercase tracking-widest ml-4">
                 Privacy
@@ -255,7 +255,7 @@ export function EditStepModal({ open, onOpenChange, screenshotDataUrl, originalS
                       />
                     </button>
                     <div className="flex flex-col">
-                      <span className="text-sm font-bold text-[#2D241E]">Redact input field</span>
+                      <span className="text-sm font-bold text-[#2D241E]">Redact input fields</span>
                       {isTogglingRedaction && (
                         <span className="text-[9px] text-[#E67E22] font-black uppercase tracking-wider">
                           Generating redacted image...
@@ -281,7 +281,7 @@ export function EditStepModal({ open, onOpenChange, screenshotDataUrl, originalS
                   alt={`Step ${stepNumber} screenshot`}
                   className="w-full h-auto"
                 />
-                {isTypeStep && redactEnabled && (
+                {redactEnabled && (
                   <div className="absolute top-4 right-4">
                     <div className="bg-black/70 backdrop-blur-sm px-3 py-2 rounded-full text-white shadow-lg flex items-center space-x-2">
                       <EyeOff size={16} />

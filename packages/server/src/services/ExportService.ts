@@ -3,7 +3,7 @@ import archiver from 'archiver';
 import { chromium } from 'playwright-core';
 import { createWriteStream, readFileSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { basename, join } from 'node:path';
+import { join } from 'node:path';
 import sharp from 'sharp';
 import type { ClickStep, HoverStep, ScrollStep, SelectStep, Step, TypeStep, PasteStep, ExportOptions, ExportResult, ExportFormat, StepwiseManifest } from '@stepwise/shared';
 import type { ServerSession } from '../types/session.js';
@@ -30,11 +30,40 @@ export class ExportService {
    * Gets the appropriate screenshot path (redacted or original)
    */
   private getScreenshotPath(step: Step): string {
-    if (step.action === 'type' && (step as TypeStep).redactScreenshot) {
-      const typeStep = step as TypeStep;
-      return typeStep.redactedScreenshotPath || step.screenshotPath;
+    if (step.redactScreenshot) {
+      return step.redactedScreenshotPath || step.screenshotPath;
     }
     return step.screenshotPath;
+  }
+
+  private decodeDataUrl(dataUrl: string | undefined): Buffer | null {
+    if (!dataUrl) {
+      return null;
+    }
+
+    const match = dataUrl.match(/^data:image\/[a-zA-Z0-9.+-]+;base64,(.+)$/);
+    if (!match?.[1]) {
+      return null;
+    }
+
+    try {
+      return Buffer.from(match[1], 'base64');
+    } catch {
+      return null;
+    }
+  }
+
+  private getScreenshotBuffer(step: Step): Buffer | null {
+    const screenshotPath = this.getScreenshotPath(step);
+    if (screenshotPath) {
+      try {
+        return readFileSync(screenshotPath);
+      } catch {
+        // fall through
+      }
+    }
+
+    return this.decodeDataUrl(step.screenshotDataUrl);
   }
 
   /**
@@ -196,8 +225,8 @@ export class ExportService {
   /**
    * Calculates image dimensions that fit within max bounds while preserving aspect ratio
    */
-  private async calculateImageDimensions(imagePath: string): Promise<{ width: number; height: number }> {
-    const metadata = await sharp(imagePath).metadata();
+  private async calculateImageDimensions(image: Buffer): Promise<{ width: number; height: number }> {
+    const metadata = await sharp(image).metadata();
     const originalWidth = metadata.width ?? 600;
     const originalHeight = metadata.height ?? 400;
     const aspectRatio = originalWidth / originalHeight;
@@ -256,9 +285,11 @@ export class ExportService {
 
       if (options.includeScreenshots !== false) {
         try {
-          const screenshotPath = this.getScreenshotPath(step);
-          const imageBuffer = await readFile(screenshotPath);
-          const dimensions = await this.calculateImageDimensions(screenshotPath);
+          const imageBuffer = this.getScreenshotBuffer(step);
+          if (!imageBuffer) {
+            continue;
+          }
+          const dimensions = await this.calculateImageDimensions(imageBuffer);
 
           children.push(
             new Paragraph({
@@ -340,15 +371,10 @@ export class ExportService {
 
         if (options.includeScreenshots !== false) {
           const imgName = `step-${step.index + 1}.jpg`;
-          markdown += `![Step ${step.index + 1}](./images/${imgName})\n\n`;
-
-          const screenshotPath = this.getScreenshotPath(step);
-
-          try {
-            const imgBuffer = readFileSync(screenshotPath);
-            archive.append(imgBuffer, { name: `images/${imgName}` });
-          } catch {
-            // Skip if not available
+          const imageBuffer = this.getScreenshotBuffer(step);
+          if (imageBuffer) {
+            markdown += `![Step ${step.index + 1}](./images/${imgName})\n\n`;
+            archive.append(imageBuffer, { name: `images/${imgName}` });
           }
         }
 
@@ -392,12 +418,9 @@ export class ExportService {
       if (options.includeScreenshots !== false) {
         for (const step of this.session.steps) {
           const imgName = `step-${step.index + 1}.jpg`;
-          const screenshotPath = this.getScreenshotPath(step);
-          try {
-            const imgBuffer = readFileSync(screenshotPath);
-            archive.append(imgBuffer, { name: `images/${imgName}` });
-          } catch {
-            // Skip if not available
+          const imageBuffer = this.getScreenshotBuffer(step);
+          if (imageBuffer) {
+            archive.append(imageBuffer, { name: `images/${imgName}` });
           }
         }
       }
@@ -437,17 +460,20 @@ export class ExportService {
       archive.on('error', reject);
 
       archive.append(JSON.stringify(manifest, null, 2), { name: 'manifest.json' });
-      archive.append(JSON.stringify(this.session.steps, null, 2), { name: 'steps.json' });
-
-      for (const step of this.session.steps) {
-        const screenshotPath = this.getScreenshotPath(step);
-        try {
-          const imgBuffer = readFileSync(screenshotPath);
-          archive.append(imgBuffer, { name: `screenshots/${basename(screenshotPath)}` });
-        } catch {
-          // Skip if not available
+      const exportedSteps = this.session.steps.map((step) => {
+        const imageBuffer = this.getScreenshotBuffer(step);
+        if (!imageBuffer) {
+          return step;
         }
-      }
+
+        const screenshotName = `screenshots/step-${step.index + 1}.jpg`;
+        archive.append(imageBuffer, { name: screenshotName });
+        return {
+          ...step,
+          screenshotPath: screenshotName,
+        };
+      });
+      archive.append(JSON.stringify(exportedSteps, null, 2), { name: 'steps.json' });
 
       void archive.finalize();
     });
@@ -476,16 +502,11 @@ export class ExportService {
     for (const step of steps) {
       let imgSrc = '';
       if (options.includeScreenshots !== false) {
-        const screenshotPath = this.getScreenshotPath(step);
+        const imageBuffer = this.getScreenshotBuffer(step);
         if (useExternalImages) {
-          imgSrc = `./images/step-${step.index + 1}.jpg`;
-        } else {
-          try {
-            const imgBuffer = readFileSync(screenshotPath);
-            imgSrc = `data:image/jpeg;base64,${imgBuffer.toString('base64')}`;
-          } catch {
-            imgSrc = '';
-          }
+          imgSrc = imageBuffer ? `./images/step-${step.index + 1}.jpg` : '';
+        } else if (imageBuffer) {
+          imgSrc = `data:image/jpeg;base64,${imageBuffer.toString('base64')}`;
         }
       }
 

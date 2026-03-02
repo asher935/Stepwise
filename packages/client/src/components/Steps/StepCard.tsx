@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
-import { Trash2, Edit3, EyeOff } from 'lucide-react';
-import type { Step, TypeStep } from '@stepwise/shared';
+import { Trash2, Edit3, Eye, EyeOff } from 'lucide-react';
+import type { Step } from '@stepwise/shared';
 import { useSessionStore } from '@/stores/sessionStore';
 import { EditStepModal } from './EditStepModal';
 
@@ -22,6 +22,7 @@ export function StepCard({ step }: StepCardProps) {
   const isCollapsed = useSessionStore((s) => s.collapsedStepIds.has(step.id));
   const isHovered = hoveredStepId === step.id;
   const isLatest = step.index === steps.length - 1;
+  const canToggleRedaction = Boolean(step.redactionRects?.length) || step.action === 'type' || step.action === 'paste';
   // Expand if hovered, or if it's the latest card and nothing else is hovered
   const shouldExpand = isHovered || (isLatest && !hoveredStepId && !isCollapsed);
 
@@ -69,9 +70,12 @@ export function StepCard({ step }: StepCardProps) {
 
         <div className="flex-1 space-y-1.5 min-w-0">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-black text-[#BBAFA7] uppercase tracking-[0.2em]">
-              ACTION LOG
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-black text-[#BBAFA7] uppercase tracking-[0.2em]">
+                ACTION LOG
+              </span>
+              
+            </div>
             <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
               <button
                 type="button"
@@ -123,7 +127,7 @@ export function StepCard({ step }: StepCardProps) {
                 alt={`Step ${step.index + 1}`}
                 className="w-full h-full object-cover group-hover/img:scale-105 transition-transform duration-1000"
               />
-              {step.action === 'type' && (step as TypeStep).redactScreenshot && (
+              {step.redactScreenshot && (
                 <div className="absolute top-4 right-4 z-10">
                   <div className="bg-black/70 backdrop-blur-sm px-3 py-2 rounded-full text-white shadow-lg flex items-center space-x-2">
                     <EyeOff size={16} />
@@ -155,7 +159,7 @@ export function StepCard({ step }: StepCardProps) {
           }
         }}
         screenshotDataUrl={step.screenshotDataUrl}
-        originalScreenshotDataUrl={step.action === 'type' ? (step as TypeStep).originalScreenshotDataUrl : undefined}
+        originalScreenshotDataUrl={step.originalScreenshotDataUrl}
         stepNumber={step.index + 1}
         caption={step.caption}
         onSaveCaption={async (newCaption: string) => {
@@ -164,8 +168,8 @@ export function StepCard({ step }: StepCardProps) {
         onToggleRedaction={async (redact: boolean) => {
           return await toggleRedaction(step.id, redact);
         }}
-        isTypeStep={step.action === 'type'}
-        isRedacted={step.action === 'type' ? (step as TypeStep).redactScreenshot : false}
+        canToggleRedaction={canToggleRedaction}
+        isRedacted={Boolean(step.redactScreenshot)}
       />
     </article>
   );

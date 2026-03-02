@@ -29,6 +29,25 @@ function normalizeSessionSteps(session: { steps: unknown }): Step[] {
   return normalized;
 }
 
+function isStepAction(value: unknown): value is Step['action'] {
+  return value === 'click'
+    || value === 'type'
+    || value === 'paste'
+    || value === 'navigate'
+    || value === 'scroll'
+    || value === 'select'
+    || value === 'hover';
+}
+
+function isInsertableStep(value: unknown): value is Step {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const step = value as Partial<Step> & { id?: unknown; action?: unknown };
+  return typeof step.id === 'string' && step.id.length > 0 && isStepAction(step.action);
+}
+
 export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
   .post(
     '/',
@@ -207,6 +226,64 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
     {
       params: t.Object({
         sessionId: t.String(),
+      }),
+    }
+  )
+
+  .post(
+    '/:sessionId/steps',
+    async ({ params, headers, body }) => {
+      const token = headers['authorization']?.replace('Bearer ', '');
+
+      if (!token || !sessionManager.validateToken(params.sessionId, token)) {
+        return {
+          success: false,
+          error: {
+            code: ERROR_CODES.INVALID_TOKEN,
+            message: 'Invalid or missing token',
+          },
+        };
+      }
+
+      const session = sessionManager.getSession(params.sessionId);
+      if (!session) {
+        return {
+          success: false,
+          error: {
+            code: ERROR_CODES.SESSION_NOT_FOUND,
+            message: 'Session not found',
+          },
+        };
+      }
+
+      if (!isInsertableStep(body.step)) {
+        return {
+          success: false,
+          error: {
+            code: ERROR_CODES.IMPORT_FAILED,
+            message: 'Invalid step payload',
+          },
+        };
+      }
+
+      const steps = normalizeSessionSteps(session);
+      const insertionIndex = Math.max(0, Math.min(Math.floor(body.index), steps.length));
+      steps.splice(insertionIndex, 0, { ...body.step, index: insertionIndex });
+
+      for (let i = 0; i < steps.length; i++) {
+        steps[i]!.index = i;
+      }
+
+      session.steps = steps;
+      return { success: true, data: steps };
+    },
+    {
+      params: t.Object({
+        sessionId: t.String(),
+      }),
+      body: t.Object({
+        index: t.Number(),
+        step: t.Unknown(),
       }),
     }
   )

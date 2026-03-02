@@ -46,7 +46,7 @@ interface SessionStore {
   updateStep: (stepId: string, updates: { caption?: string; redactScreenshot?: boolean; redactedScreenshotPath?: string }) => Promise<void>;
   toggleRedaction: (stepId: string, redact: boolean) => Promise<string | undefined>;
   deleteStep: (stepId: string) => Promise<void>;
-  insertStep: (index: number, step: Omit<Step, 'index'>) => void;
+  insertStep: (index: number, step: Omit<Step, 'index'>) => Promise<void>;
   setSteps: (steps: Step[]) => void;
   setFrame: (frame: string) => void;
   setConnected: (connected: boolean) => void;
@@ -219,8 +219,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     }
   },
 
-  insertStep: (index: number, stepData: Omit<Step, 'index'>) => {
-    const { steps } = get();
+  insertStep: async (index: number, stepData: Omit<Step, 'index'>) => {
+    const { steps, sessionId, localStepIds } = get();
     const newStep: Step = {
       ...stepData,
       index,
@@ -232,10 +232,31 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       ...steps.slice(index).map(s => ({ ...s, index: s.index + 1 })),
     ];
 
-    set({ 
+    const nextLocalStepIds = new Set(localStepIds);
+    nextLocalStepIds.add(newStep.id);
+
+    set({
       steps: newSteps,
-      localStepIds: new Set([...get().localStepIds, newStep.id])
+      localStepIds: nextLocalStepIds,
     });
+
+    if (!sessionId) {
+      return;
+    }
+
+    try {
+      const syncedSteps = await api.insertStep(sessionId, index, newStep);
+      const syncedLocalStepIds = new Set(get().localStepIds);
+      syncedLocalStepIds.delete(newStep.id);
+      set({
+        steps: syncedSteps,
+        localStepIds: syncedLocalStepIds,
+      });
+    } catch (error) {
+      set({
+        error: error instanceof Error ? error.message : 'Failed to insert step',
+      });
+    }
   },
 
   setSteps: (steps: Step[]) => {

@@ -28,7 +28,8 @@ export function StepsList() {
           <StepCard step={step} />
         </React.Fragment>
       ))}
-      {steps.length > 0 && <StepInsertionPoint index={steps.length} />}
+      {steps.length > 0 && <StepInsertionPoint index={steps.length} alwaysExpanded />}
+      <div className="h-12 shrink-0" aria-hidden="true" />
     </div>
   );
 }

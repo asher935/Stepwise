@@ -103,6 +103,7 @@ export function EditorShell() {
         <aside
           className={`
             fixed lg:relative z-40 h-[calc(100vh-80px)] bg-white/20 backdrop-blur-2xl border-r border-black/5
+            flex flex-col
             transition-all duration-500 ease-in-out
             ${sidebarOpen ? 'w-[400px] translate-x-0 opacity-100' : 'w-0 -translate-x-full opacity-0'}
           `}
@@ -119,7 +120,7 @@ export function EditorShell() {
             <ReplayControls />
           </div>
 
-          <div className="overflow-y-auto h-full pb-48 px-6 scrollbar-thin">
+          <div className="overflow-y-auto flex-1 min-h-0 pb-24 px-6 scrollbar-thin">
             <StepsList />
           </div>
         </aside>

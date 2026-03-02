@@ -20,6 +20,8 @@ export interface BaseStep {
   caption: string;
   isEdited: boolean;
   screenshotClip?: { x: number; y: number; width: number; height: number };
+  redactionRects?: Array<{ x: number; y: number; width: number; height: number }>;
+  redactScreenshot?: boolean;
   redactedScreenshotPath?: string;
   /** Stores the original screenshot URL before redaction is applied */
   originalScreenshotDataUrl?: string;

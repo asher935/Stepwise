@@ -1,7 +1,7 @@
 import { chromium } from 'playwright-core';
 import { mkdir, rm } from 'fs/promises';
 import { join } from 'path';
-import type { SessionState, SessionMode, TypeStep } from '@stepwise/shared';
+import type { SessionState, SessionMode, Step, TypeStep, PasteStep } from '@stepwise/shared';
 import type { ServerSession, CreateSessionOptions } from '../types/session.js';
 import { env } from '../lib/env.js';
 import { generateToken, generateSessionId } from '../lib/crypto.js';
@@ -287,27 +287,26 @@ export class SessionManager {
     }
 
     const step = session.steps.find((s) => s.id === stepId);
-    if (!step || step.action !== 'type') {
-      throw new Error('STEP_NOT_FOUND_OR_NOT_TYPE_STEP');
+    if (!step) {
+      throw new Error('STEP_NOT_FOUND');
     }
 
-    const typeStep = step as TypeStep;
+    const redactionRects = this.getRedactionRects(step);
 
     if (enable) {
-      const redactionRect = redactionService.getRedactionRect(typeStep);
-      if (!redactionRect) {
+      if (redactionRects.length === 0) {
         throw new Error('CANNOT_DETERMINE_REDACTION_AREA');
       }
 
-      const redactedPath = typeStep.screenshotPath.replace(/\.(png|jpg)$/, '.redacted.$1');
+      const redactedPath = step.screenshotPath.replace(/\.(png|jpg)$/, '.redacted.$1');
       await redactionService.generateRedactedScreenshot(
-        typeStep.screenshotPath,
-        redactionRect,
+        step.screenshotPath,
+        redactionRects,
         redactedPath
       );
 
-      typeStep.redactScreenshot = true;
-      typeStep.redactedScreenshotPath = redactedPath;
+      step.redactScreenshot = true;
+      step.redactedScreenshotPath = redactedPath;
 
       const mimeType = env.SCREENSHOT_FORMAT === 'png' ? 'image/png' : 'image/jpeg';
       const redactedBuffer = await import('node:fs/promises').then(fs => fs.readFile(redactedPath));
@@ -315,11 +314,33 @@ export class SessionManager {
 
       return { redactedScreenshotPath: redactedPath, screenshotDataUrl };
     } else {
-      typeStep.redactScreenshot = false;
-      typeStep.redactedScreenshotPath = undefined;
+      step.redactScreenshot = false;
+      step.redactedScreenshotPath = undefined;
 
       return { redactedScreenshotPath: null, screenshotDataUrl: null };
     }
+  }
+
+  private getRedactionRects(step: Step): Array<{ x: number; y: number; width: number; height: number }> {
+    if (step.redactionRects && step.redactionRects.length > 0) {
+      return step.redactionRects;
+    }
+
+    if (step.action === 'type') {
+      const redactionRect = redactionService.getRedactionRect(step as TypeStep);
+      return redactionRect ? [redactionRect] : [];
+    }
+
+    if (step.action === 'paste') {
+      const pasteStep = step as PasteStep;
+      const redactionRect = redactionService.getRedactionRect({
+        target: pasteStep.target,
+        screenshotClip: pasteStep.screenshotClip,
+      });
+      return redactionRect ? [redactionRect] : [];
+    }
+
+    return [];
   }
 
   /**

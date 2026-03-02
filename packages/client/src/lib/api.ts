@@ -110,6 +110,10 @@ class ApiClient {
     await this.request('DELETE', `/sessions/${sessionId}/steps/${stepId}`);
   }
 
+  async insertStep(sessionId: string, index: number, step: Step): Promise<Step[]> {
+    return this.request('POST', `/sessions/${sessionId}/steps`, { index, step });
+  }
+
   async exportSession(
     sessionId: string,
     options: {

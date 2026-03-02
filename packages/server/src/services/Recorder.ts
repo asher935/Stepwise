@@ -25,6 +25,8 @@ type ElementInfo = {
   boundingBox: { x: number; y: number; width: number; height: number };
 };
 
+type Rect = { x: number; y: number; width: number; height: number };
+
 interface RecorderOptions {
   session: ServerSession;
   cdpBridge: CDPBridge;
@@ -51,6 +53,7 @@ export class Recorder {
     screenshotPath: string;
     screenshotDataUrl: string;
     elementInfo: ElementInfo | null;
+    redactionRects: Rect[];
     clip?: { x: number; y: number; width: number; height: number } | null;
   } | null = null;
   private typeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -125,18 +128,22 @@ export class Recorder {
     delay: number = 100,
     clip?: { x: number; y: number; width: number; height: number },
     highlightBoundingBox?: { x: number; y: number; width: number; height: number }
-  ): Promise<Buffer> {
+  ): Promise<{ screenshotData: Buffer; redactionRects: Rect[] }> {
     // Wait for page to settle
     if (delay > 0) {
       await new Promise(resolve => setTimeout(resolve, delay));
     }
 
+    const redactionRects = await this.detectInputRedactionRects(clip);
+
     // Use highlighted screenshot if bounding box is provided
     if (highlightBoundingBox) {
-      return await this.cdpBridge.takeScreenshotWithHighlight(highlightBoundingBox, clip);
+      const screenshotData = await this.cdpBridge.takeScreenshotWithHighlight(highlightBoundingBox, clip);
+      return { screenshotData, redactionRects };
     }
 
-    return await this.cdpBridge.takeScreenshot(clip);
+    const screenshotData = await this.cdpBridge.takeScreenshot(clip);
+    return { screenshotData, redactionRects };
   }
 
   /**
@@ -156,6 +163,7 @@ export class Recorder {
       screenshotDataUrl,
       caption: '',
       isEdited: false,
+      redactScreenshot: false,
       screenshotClip,
     };
   }
@@ -163,6 +171,96 @@ export class Recorder {
   private toScreenshotDataUrl(buffer: Buffer): string {
     const mimeType = env.SCREENSHOT_FORMAT === 'png' ? 'image/png' : 'image/jpeg';
     return `data:${mimeType};base64,${buffer.toString('base64')}`;
+  }
+
+  private clipRectToScreenshotSpace(
+    rect: Rect,
+    clip?: Rect
+  ): Rect | null {
+    if (!clip) {
+      return rect.width > 0 && rect.height > 0 ? rect : null;
+    }
+
+    const localX = rect.x - clip.x;
+    const localY = rect.y - clip.y;
+    const left = Math.max(0, localX);
+    const top = Math.max(0, localY);
+    const right = Math.min(clip.width, localX + rect.width);
+    const bottom = Math.min(clip.height, localY + rect.height);
+
+    if (left >= right || top >= bottom) {
+      return null;
+    }
+
+    return {
+      x: left,
+      y: top,
+      width: right - left,
+      height: bottom - top,
+    };
+  }
+
+  private async detectInputRedactionRects(clip?: Rect): Promise<Rect[]> {
+    const page = this.session.page;
+    if (!page) return [];
+
+    try {
+      const pageRects = await page.evaluate(() => {
+        const candidates = new Set<Element>();
+        for (const element of document.querySelectorAll('input, textarea, select, [contenteditable], [role="textbox"], [role="searchbox"], [role="combobox"]')) {
+          candidates.add(element);
+        }
+
+        const shouldSkipInput = (el: HTMLInputElement): boolean => {
+          const type = (el.type || 'text').toLowerCase();
+          return ['hidden', 'checkbox', 'radio', 'range', 'color', 'file', 'button', 'submit', 'reset', 'image'].includes(type);
+        };
+
+        const rects: Array<{ x: number; y: number; width: number; height: number }> = [];
+        const seen = new Set<string>();
+
+        for (const element of candidates) {
+          if (element instanceof HTMLInputElement && shouldSkipInput(element)) {
+            continue;
+          }
+
+          const rect = element.getBoundingClientRect();
+          if (rect.width < 2 || rect.height < 2) {
+            continue;
+          }
+
+          const style = window.getComputedStyle(element as HTMLElement);
+          if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) {
+            continue;
+          }
+
+          if (rect.bottom <= 0 || rect.right <= 0 || rect.top >= window.innerHeight || rect.left >= window.innerWidth) {
+            continue;
+          }
+
+          const rounded = {
+            x: Math.max(0, Math.round(rect.x)),
+            y: Math.max(0, Math.round(rect.y)),
+            width: Math.round(rect.width),
+            height: Math.round(rect.height),
+          };
+
+          const key = `${rounded.x}:${rounded.y}:${rounded.width}:${rounded.height}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            rects.push(rounded);
+          }
+        }
+
+        return rects;
+      });
+
+      return pageRects
+        .map((rect) => this.clipRectToScreenshotSpace(rect, clip))
+        .filter((rect): rect is Rect => rect !== null);
+    } catch {
+      return [];
+    }
   }
 
   private async getViewportSize(): Promise<{ width: number; height: number } | null> {
@@ -257,7 +355,7 @@ export class Recorder {
     );
 
     // Capture screenshot with highlight if element has bounding box
-    const screenshotData = await this.captureScreenshot(
+    const { screenshotData, redactionRects } = await this.captureScreenshot(
       0,
       clip ?? undefined,
       elementInfo?.boundingBox && elementInfo.boundingBox.width > 0 && elementInfo.boundingBox.height > 0
@@ -276,6 +374,7 @@ export class Recorder {
       screenshotPath,
       screenshotDataUrl,
       elementInfo,
+      redactionRects,
       clip
     };
   }
@@ -300,6 +399,7 @@ export class Recorder {
     let screenshotPath: string;
     let screenshotDataUrl: string;
     let elementInfo: ElementInfo | null;
+    let redactionRects: Rect[] = [];
     let clip: { x: number; y: number; width: number; height: number } | null = null;
 
     // Use pre-captured screenshot if available and coordinates match
@@ -313,6 +413,7 @@ export class Recorder {
       screenshotPath = pending.screenshotPath;
       screenshotDataUrl = pending.screenshotDataUrl;
       elementInfo = pending.elementInfo;
+      redactionRects = pending.redactionRects;
       clip = pending.clip ?? null;
 
       // Clear the pending screenshot
@@ -329,13 +430,15 @@ export class Recorder {
       );
 
       // Capture screenshot with highlight if element has bounding box
-      screenshotData = await this.captureScreenshot(
+      const capture = await this.captureScreenshot(
         0,
         clip ?? undefined,
         elementInfo?.boundingBox && elementInfo.boundingBox.width > 0 && elementInfo.boundingBox.height > 0
           ? elementInfo.boundingBox
           : undefined
       );
+      screenshotData = capture.screenshotData;
+      redactionRects = capture.redactionRects;
       screenshotPath = await this.saveScreenshot(screenshotData);
       screenshotDataUrl = this.toScreenshotDataUrl(screenshotData);
     }
@@ -358,6 +461,7 @@ export class Recorder {
       action: 'click',
       target,
       button,
+      redactionRects,
       caption,
     };
 
@@ -481,22 +585,20 @@ export class Recorder {
       }
 
       // Capture screenshot now that typing has paused
-      const screenshotData = await this.captureScreenshot(
+      const capture = await this.captureScreenshot(
         0,
         step.screenshotClip ?? undefined,
         step.target.boundingBox && step.target.boundingBox.width > 0 && step.target.boundingBox.height > 0
           ? step.target.boundingBox
           : undefined
       );
+      const screenshotData = capture.screenshotData;
       const screenshotPath = await this.saveScreenshot(screenshotData);
 
       // Redact if needed
       let finalScreenshotData = screenshotData;
-      if (step.redactScreenshot) {
-        const redactionRect = redactionService.getRedactionRect(step);
-        if (redactionRect) {
-          finalScreenshotData = await redactionService.redact(screenshotData, redactionRect);
-        }
+      if (step.redactScreenshot && capture.redactionRects.length > 0) {
+        finalScreenshotData = await redactionService.redact(screenshotData, capture.redactionRects);
       }
 
       const screenshotDataUrl = this.toScreenshotDataUrl(finalScreenshotData);
@@ -504,6 +606,7 @@ export class Recorder {
       // Update step with screenshot
       step.screenshotPath = screenshotPath;
       step.screenshotDataUrl = screenshotDataUrl;
+      step.redactionRects = capture.redactionRects;
 
       // Move accumulated text to rawValue
       const { accumulatedText, ...stepWithoutAccumulated } = step;
@@ -568,28 +671,27 @@ export class Recorder {
       const clip = await this.getClipForTarget(focusedElement?.boundingBox ?? null);
 
       // Capture new screenshot
-      const screenshotData = await this.captureScreenshot(
+      const capture = await this.captureScreenshot(
         50,
         clip ?? undefined,
         focusedElement?.boundingBox && focusedElement.boundingBox.width > 0 && focusedElement.boundingBox.height > 0
           ? focusedElement.boundingBox
           : undefined
       );
+      const screenshotData = capture.screenshotData;
 
       const screenshotPath = await this.saveScreenshot(screenshotData);
 
       // Redact if needed
       let finalScreenshotData = screenshotData;
-      if (step.redactScreenshot) {
-        const redactionRect = redactionService.getRedactionRect(step);
-        if (redactionRect) {
-          finalScreenshotData = await redactionService.redact(screenshotData, redactionRect);
-        }
+      if (step.redactScreenshot && capture.redactionRects.length > 0) {
+        finalScreenshotData = await redactionService.redact(screenshotData, capture.redactionRects);
       }
 
       // Update step with new screenshot
       step.screenshotPath = screenshotPath;
       step.screenshotDataUrl = this.toScreenshotDataUrl(finalScreenshotData);
+      step.redactionRects = capture.redactionRects;
       if (step.redactScreenshot) {
         step.originalScreenshotDataUrl = this.toScreenshotDataUrl(screenshotData);
       }
@@ -626,7 +728,7 @@ export class Recorder {
     this.clearLastTypeStep();
 
     await this.cdpBridge.waitForPageLoad();
-    const screenshotData = await this.captureScreenshot();
+    const { screenshotData, redactionRects } = await this.captureScreenshot();
     const screenshotPath = await this.saveScreenshot(screenshotData);
     const screenshotDataUrl = this.toScreenshotDataUrl(screenshotData);
 
@@ -635,6 +737,7 @@ export class Recorder {
       action: 'navigate',
       fromUrl,
       toUrl,
+      redactionRects,
       caption: `Navigate to ${this.formatUrl(toUrl)}`,
     };
 
@@ -690,7 +793,7 @@ export class Recorder {
       ? (totalDeltaY > 0 ? 'down' : 'up')
       : (totalDeltaX > 0 ? 'right' : 'left');
 
-    const screenshotData = await this.captureScreenshot(100);
+    const { screenshotData, redactionRects } = await this.captureScreenshot(100);
     const screenshotPath = await this.saveScreenshot(screenshotData);
     const screenshotDataUrl = this.toScreenshotDataUrl(screenshotData);
 
@@ -699,6 +802,7 @@ export class Recorder {
       action: 'scroll',
       direction,
       distance,
+      redactionRects,
       caption: `Scroll ${direction}`,
     };
 
@@ -742,13 +846,14 @@ export class Recorder {
     );
 
     // Capture screenshot with highlight
-    const screenshotData = await this.captureScreenshot(
+    const capture = await this.captureScreenshot(
       50, // Small buffer to ensure paste is complete
       clip ?? undefined,
       focusedElement?.boundingBox && focusedElement.boundingBox.width > 0 && focusedElement.boundingBox.height > 0
         ? focusedElement.boundingBox
         : undefined
     );
+    const screenshotData = capture.screenshotData;
     const screenshotPath = await this.saveScreenshot(screenshotData);
     const screenshotDataUrl = this.toScreenshotDataUrl(screenshotData);
 
@@ -756,11 +861,8 @@ export class Recorder {
     const redactScreenshot = this.shouldRedactPaste(text, fieldName);
 
     let finalScreenshotData = screenshotData;
-    if (redactScreenshot) {
-      const redactionRect = redactionService.getRedactionRect({ target, screenshotClip: clip ?? undefined });
-      if (redactionRect) {
-        finalScreenshotData = await redactionService.redact(screenshotData, redactionRect);
-      }
+    if (redactScreenshot && capture.redactionRects.length > 0) {
+      finalScreenshotData = await redactionService.redact(screenshotData, capture.redactionRects);
     }
 
     // Create paste step
@@ -770,6 +872,7 @@ export class Recorder {
       target,
       fieldName,
       redactScreenshot,
+      redactionRects: capture.redactionRects,
       displayText: `Paste in ${fieldName}`,
       caption: `Paste in "${fieldName}"`,
       rawValue: text,

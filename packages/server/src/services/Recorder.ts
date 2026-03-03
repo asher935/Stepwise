@@ -291,7 +291,7 @@ export class Recorder {
       prioritized.push(element);
     }
 
-    return prioritized.slice(0, 12).map((element, index) => this.toLegendItem(element, index + 1));
+    return prioritized.map((element, index) => this.toLegendItem(element, index + 1));
   }
 
   private buildLegendCaption(legendItems: StepLegendItem[]): string {

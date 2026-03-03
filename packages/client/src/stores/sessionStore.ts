@@ -33,6 +33,7 @@ interface SessionStore {
   isConnected: boolean;
   isLoading: boolean;
   error: string | null;
+  expiryWarningMs: number | null;
   hoveredElement: ElementInfo | null;
   collapsedStepIds: Set<string>;
   guideTitle: string;
@@ -53,6 +54,8 @@ interface SessionStore {
   setConnected: (connected: boolean) => void;
   setError: (error: string | null) => void;
   setSessionState: (state: SessionState | null) => void;
+  extendSession: () => void;
+  clearExpiryWarning: () => void;
   setHoveredElement: (element: ElementInfo | null) => void;
   setGuideTitle: (title: string) => void;
   toggleStepCollapsed: (stepId: string) => void;
@@ -72,6 +75,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   isConnected: false,
   isLoading: false,
   error: null,
+  expiryWarningMs: null,
   hoveredElement: null,
   collapsedStepIds: new Set<string>(),
   guideTitle: 'Untitled Guide',
@@ -298,6 +302,15 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     set({ sessionState: state });
   },
 
+  extendSession: () => {
+    wsClient.extendSession();
+    set({ expiryWarningMs: null, error: null });
+  },
+
+  clearExpiryWarning: () => {
+    set({ expiryWarningMs: null });
+  },
+
   setHoveredElement: (element: ElementInfo | null) => {
     set({ hoveredElement: element });
   },
@@ -346,6 +359,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       isConnected: false,
       isLoading: false,
       error: null,
+      expiryWarningMs: null,
       hoveredElement: null,
       collapsedStepIds: new Set<string>(),
       guideTitle: 'Untitled Guide',
@@ -394,13 +408,16 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
           });
           break;
         case 'session:state':
-          set({ sessionState: message.state });
+          set({ sessionState: message.state, expiryWarningMs: null });
+          break;
+        case 'session:expiring':
+          set({ expiryWarningMs: message.remainingMs });
           break;
         case 'element:hover':
           set({ hoveredElement: message.element });
           break;
         case 'error':
-          set({ error: message.message });
+          set({ error: message.message, expiryWarningMs: null });
           break;
         case 'cdp:error':
           console.error('[CDP] Error:', message);

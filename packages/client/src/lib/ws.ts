@@ -2,9 +2,11 @@ import type {
   ClientMessage,
   ServerMessage,
 } from '@stepwise/shared';
+import { WS_CLOSE_CODES } from '@stepwise/shared';
 
 type MessageHandler = (message: ServerMessage) => void;
 type ConnectionHandler = () => void;
+type DisconnectHandler = (event: CloseEvent) => void;
 type SendHandler = (message: ClientMessage) => void;
 
 class WebSocketClient {
@@ -12,7 +14,7 @@ class WebSocketClient {
   private messageHandlers: Set<MessageHandler> = new Set();
   private sendHandlers: Set<SendHandler> = new Set();
   private connectHandlers: Set<ConnectionHandler> = new Set();
-  private disconnectHandlers: Set<ConnectionHandler> = new Set();
+  private disconnectHandlers: Set<DisconnectHandler> = new Set();
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private reconnectDelay = 1000;
@@ -54,10 +56,15 @@ class WebSocketClient {
       }
     };
 
-    this.ws.onclose = () => {
+    this.ws.onclose = (event) => {
       console.warn('[WS] Disconnected');
       this.stopPing();
-      this.disconnectHandlers.forEach(h => { h(); });
+      this.disconnectHandlers.forEach(h => { h(event); });
+
+      if (!this.shouldReconnect(event.code)) {
+        return;
+      }
+
       this.attemptReconnect();
     };
 
@@ -80,6 +87,17 @@ class WebSocketClient {
     setTimeout(() => {
       this.doConnect();
     }, delay);
+  }
+
+  private shouldReconnect(code: number): boolean {
+    if (
+      code === WS_CLOSE_CODES.SESSION_ENDED ||
+      code === WS_CLOSE_CODES.SESSION_NOT_FOUND ||
+      code === WS_CLOSE_CODES.UNAUTHORIZED
+    ) {
+      return false;
+    }
+    return true;
   }
 
   private startPing(): void {
@@ -127,7 +145,7 @@ class WebSocketClient {
     return () => this.connectHandlers.delete(handler);
   }
 
-  onDisconnect(handler: ConnectionHandler): () => void {
+  onDisconnect(handler: DisconnectHandler): () => void {
     this.disconnectHandlers.add(handler);
     return () => this.disconnectHandlers.delete(handler);
   }
@@ -197,6 +215,10 @@ class WebSocketClient {
 
   setHighlightColor(color: string): void {
     this.send({ type: 'settings:highlight', color });
+  }
+
+  extendSession(): void {
+    this.send({ type: 'session:extend' });
   }
 }
 

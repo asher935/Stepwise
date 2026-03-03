@@ -36,6 +36,8 @@ function describeClientMessage(message: ClientMessage): string {
       return 'replay:stop';
     case 'settings:highlight':
       return `settings:highlight ${message.color}`;
+    case 'session:extend':
+      return 'session:extend';
   }
 }
 
@@ -45,6 +47,8 @@ function describeServerMessage(message: ServerMessage): string {
       return 'frame';
     case 'session:state':
       return `session:${message.state.status}${message.state.url ? ` ${message.state.url}` : ''}`;
+    case 'session:expiring':
+      return `session:expiring ${Math.ceil(message.remainingMs / 1000)}s`;
     case 'step:new':
       return 'step:new';
     case 'step:updated':

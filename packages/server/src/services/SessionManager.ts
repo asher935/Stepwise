@@ -11,6 +11,7 @@ type SessionEventType =
   | 'session:created'
   | 'session:started'
   | 'session:ended'
+  | 'session:expiring'
   | 'session:error'
   | 'session:activity';
 
@@ -40,9 +41,21 @@ export class SessionManager {
   private async cleanupIdleSessions(): Promise<void> {
     const now = Date.now();
     for (const [id, session] of this.sessions) {
-      if (now - session.lastActivityAt > env.IDLE_TIMEOUT_MS) {
+      const idleDuration = now - session.lastActivityAt;
+      const remainingMs = env.IDLE_TIMEOUT_MS - idleDuration;
+
+      if (remainingMs <= 0) {
         console.warn(`[SessionManager] Cleaning up idle session: ${id}`);
         void this.endSession(id, 'timeout');
+        continue;
+      }
+
+      if (
+        remainingMs <= env.SESSION_EXPIRY_WARNING_MS &&
+        (session.lastExpiryWarningAt === null || now - session.lastExpiryWarningAt >= 30_000)
+      ) {
+        session.lastExpiryWarningAt = now;
+        this.emit('session:expiring', id, { remainingMs });
       }
     }
   }
@@ -111,6 +124,7 @@ export class SessionManager {
       startUrl: null,
       createdAt: now,
       lastActivityAt: now,
+      lastExpiryWarningAt: null,
       healthStatus: 'unknown',
       lastHealthCheck: now,
       initialNavigationRecorded: false,
@@ -240,6 +254,7 @@ export class SessionManager {
     const session = this.sessions.get(sessionId);
     if (session) {
       session.lastActivityAt = Date.now();
+      session.lastExpiryWarningAt = null;
       this.emit('session:activity', sessionId);
     }
   }

@@ -154,6 +154,10 @@ function isClientMessage(value: unknown): value is ClientMessage {
     return true;
   }
 
+  if (type === 'session:extend') {
+    return true;
+  }
+
   if (type === 'ping') {
     const timestamp = value['timestamp'];
     if (typeof timestamp !== 'number') return false;
@@ -212,6 +216,34 @@ function broadcastToSession(sessionId: string, message: ServerMessage): void {
 
 export function notifyStepDeleted(sessionId: string, stepId: string): void {
   broadcastToSession(sessionId, { type: 'step:deleted', stepId });
+}
+
+export async function notifySessionEnded(
+  sessionId: string,
+  reason: 'user' | 'timeout' | 'error'
+): Promise<void> {
+  const sessionSockets: ServerWebSocket<WSConnection>[] = [];
+  for (const [ws] of connections) {
+    if (ws.data.sessionId === sessionId) {
+      sessionSockets.push(ws);
+    }
+  }
+
+  for (const ws of sessionSockets) {
+    if (reason === 'timeout') {
+      send(ws, {
+        type: 'error',
+        code: ERROR_CODES.SESSION_EXPIRED,
+        message: 'Session expired due to inactivity',
+      });
+    }
+    ws.close(WS_CLOSE_CODES.SESSION_ENDED);
+    await handleClose(ws);
+  }
+}
+
+export function notifySessionExpiring(sessionId: string, remainingMs: number): void {
+  broadcastToSession(sessionId, { type: 'session:expiring', remainingMs });
 }
 
 export function getSessionRecorder(sessionId: string): Recorder | null {
@@ -416,9 +448,6 @@ export async function handleMessage(
   if (!identity) return;
   const { sessionId } = identity;
 
-  // Update session activity
-  sessionManager.updateActivity(sessionId);
-
   // Parse message
   let parsed: ClientMessage | null;
   try {
@@ -446,6 +475,10 @@ export async function handleMessage(
       message: 'Invalid message format',
     });
     return;
+  }
+
+  if (parsed.type !== 'ping' && parsed.type !== 'session:extend') {
+    sessionManager.updateActivity(sessionId);
   }
 
   if (
@@ -485,6 +518,10 @@ export async function handleMessage(
 
       case 'settings:highlight':
         handleHighlightSettings(state, parsed);
+        break;
+
+      case 'session:extend':
+        sessionManager.updateActivity(sessionId);
         break;
 
       case 'replay:start':

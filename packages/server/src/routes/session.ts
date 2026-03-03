@@ -119,7 +119,7 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
           } 
         };
       }
-      
+      sessionManager.updateActivity(params.sessionId);
       return { success: true, data: state };
     },
     {
@@ -147,6 +147,7 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
       try {
         await sessionManager.startSession(params.sessionId, body?.startUrl);
         const state = sessionManager.getSessionState(params.sessionId);
+        sessionManager.updateActivity(params.sessionId);
         return { success: true, data: state };
       } catch (error) {
         if (error instanceof Error) {
@@ -186,6 +187,7 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
         };
       }
       
+      sessionManager.updateActivity(params.sessionId);
       await sessionManager.endSession(params.sessionId, 'user');
       return { success: true, data: true };
     },
@@ -223,6 +225,7 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
           };
         }
 
+        sessionManager.updateActivity(params.sessionId);
         const steps = normalizeSessionSteps(session);
         return { success: true, data: steps };
       } catch (error) {
@@ -272,6 +275,7 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
         };
       }
 
+      sessionManager.updateActivity(params.sessionId);
       let stepToInsert: Step | null = null;
       if (body.autoDetect) {
         const recorder = getSessionRecorder(params.sessionId);
@@ -356,6 +360,7 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
         };
       }
 
+      sessionManager.updateActivity(params.sessionId);
       const steps = normalizeSessionSteps(session);
       const stepIndex = steps.findIndex(s => s.id === params.stepId);
       if (stepIndex === -1) {
@@ -437,6 +442,7 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
         };
       }
 
+      sessionManager.updateActivity(params.sessionId);
       normalizeSessionSteps(session);
 
       try {
@@ -500,6 +506,7 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
           };
         }
 
+        sessionManager.updateActivity(params.sessionId);
         const steps = normalizeSessionSteps(session);
         const stepIndex = steps.findIndex((step) => step.id === params.stepId);
 

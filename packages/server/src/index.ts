@@ -10,7 +10,7 @@ import { importRoutes } from './routes/import.js';
 import { sessionRoutes } from './routes/session.js';
 import { sessionManager } from './services/SessionManager.js';
 import type { WSConnection } from './types/session.js';
-import { handleClose, handleMessage, handleOpen, notifySessionStarted } from './ws/handler.js';
+import { handleClose, handleMessage, handleOpen, notifySessionEnded, notifySessionExpiring, notifySessionStarted } from './ws/handler.js';
 
 // Server startup information logged via console.warn for development tracking
 console.warn(`[Server] Starting Stepwise server...`);
@@ -105,6 +105,38 @@ sessionManager.on('session:started', (sessionId) => {
   void notifySessionStarted(sessionId).catch((error: unknown) => {
     console.error('[Server] Failed to notify started session:', error);
   });
+});
+
+sessionManager.on('session:ended', (sessionId, data) => {
+  const reason = (
+    typeof data === 'object' &&
+    data !== null &&
+    'reason' in data &&
+    (data.reason === 'user' || data.reason === 'timeout' || data.reason === 'error')
+  )
+    ? data.reason
+    : 'error';
+
+  void notifySessionEnded(sessionId, reason).catch((error: unknown) => {
+    console.error('[Server] Failed to notify ended session:', error);
+  });
+});
+
+sessionManager.on('session:expiring', (sessionId, data) => {
+  const remainingMs = (
+    typeof data === 'object' &&
+    data !== null &&
+    'remainingMs' in data &&
+    typeof data.remainingMs === 'number'
+  )
+    ? data.remainingMs
+    : 0;
+
+  if (remainingMs <= 0) {
+    return;
+  }
+
+  notifySessionExpiring(sessionId, remainingMs);
 });
 
 async function shutdown(): Promise<void> {

@@ -16,6 +16,9 @@ export function EditorShell() {
   const steps = useSessionStore((s) => s.steps);
   const sessionId = useSessionStore((s) => s.sessionId);
   const isConnected = useSessionStore((s) => s.isConnected);
+  const expiryWarningMs = useSessionStore((s) => s.expiryWarningMs);
+  const extendSession = useSessionStore((s) => s.extendSession);
+  const clearExpiryWarning = useSessionStore((s) => s.clearExpiryWarning);
   const guideTitle = useSessionStore((s) => s.guideTitle);
   const setGuideTitle = useSessionStore((s) => s.setGuideTitle);
 
@@ -37,6 +40,8 @@ export function EditorShell() {
     await endSession();
     setShowFinish(false);
   };
+
+  const remainingSeconds = expiryWarningMs === null ? 0 : Math.max(1, Math.ceil(expiryWarningMs / 1000));
 
   return (
     <div className="flex flex-col h-screen bg-[#FDF2E9] overflow-hidden text-[#2D241E]">
@@ -174,6 +179,38 @@ export function EditorShell() {
                   className="w-full py-5 bg-white hover:bg-[#FDF2E9] border border-black/5 rounded-[28px] font-black text-base text-[#6B5E55] transition-all active:scale-95"
                 >
                   Go Back to Export
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {expiryWarningMs !== null && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-[#2D241E]/20 backdrop-blur-md" />
+
+          <div className="relative w-full max-w-md bg-white/90 backdrop-blur-3xl border border-white rounded-[48px] overflow-hidden shadow-[0_40px_100px_rgba(45,36,30,0.15)]">
+            <div className="p-10 md:p-12 space-y-8">
+              <div className="flex flex-col items-center text-center space-y-4">
+                <h2 className="text-3xl font-black text-[#2D241E] tracking-tight">Are You Still There?</h2>
+                <p className="text-[#6B5E55] font-medium text-sm leading-relaxed">
+                  Your session will end in about <span className="text-[#E67E22] font-black">{remainingSeconds}s</span> due to inactivity.
+                </p>
+              </div>
+
+              <div className="flex flex-col space-y-3">
+                <button
+                  onClick={extendSession}
+                  className="w-full py-5 bg-[#2D241E] hover:bg-[#1A1512] text-white rounded-[28px] font-black text-base shadow-xl shadow-[#2D241E]/10 transition-all active:scale-95"
+                >
+                  Keep Session Alive
+                </button>
+                <button
+                  onClick={clearExpiryWarning}
+                  className="w-full py-5 bg-white hover:bg-[#FDF2E9] border border-black/5 rounded-[28px] font-black text-base text-[#6B5E55] transition-all active:scale-95"
+                >
+                  Dismiss
                 </button>
               </div>
             </div>

@@ -7,6 +7,7 @@ export type ClientMessageType =
   | 'input:scroll'
   | 'navigate'
   | 'settings:highlight'
+  | 'session:extend'
   | 'ping'
   | 'replay:start'
   | 'replay:pause'
@@ -66,6 +67,10 @@ export interface HighlightSettingsMessage {
   color: string;
 }
 
+export interface SessionExtendMessage {
+  type: 'session:extend';
+}
+
 /** Replay start message */
 export interface ReplayStartMessage {
   type: 'replay:start';
@@ -84,6 +89,7 @@ export type ClientMessage =
   | ScrollInputMessage
   | NavigateMessage
   | HighlightSettingsMessage
+  | SessionExtendMessage
   | PingMessage
   | ReplayStartMessage
   | ReplayControlMessage;
@@ -103,6 +109,7 @@ export type ServerMessageType =
   | 'step:updated'
   | 'step:deleted'
   | 'session:state'
+  | 'session:expiring'
   | 'error'
   | 'pong'
   | 'cdp:error'
@@ -144,6 +151,11 @@ export interface StepDeletedMessage {
 export interface SessionStateMessage {
   type: 'session:state';
   state: SessionState;
+}
+
+export interface SessionExpiringMessage {
+  type: 'session:expiring';
+  remainingMs: number;
 }
 
 /** Error message */
@@ -226,6 +238,7 @@ export type ServerMessage =
   | StepUpdatedMessage
   | StepDeletedMessage
   | SessionStateMessage
+  | SessionExpiringMessage
   | ErrorMessage
   | PongMessage
   | CDPErrorMessage

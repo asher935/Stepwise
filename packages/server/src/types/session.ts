@@ -15,6 +15,7 @@ export interface ServerSession {
   startUrl: string | null;
   createdAt: number;
   lastActivityAt: number;
+  lastExpiryWarningAt: number | null;
   error?: string;
   screencastSessionId?: number;
   healthStatus: 'healthy' | 'unhealthy' | 'unknown';

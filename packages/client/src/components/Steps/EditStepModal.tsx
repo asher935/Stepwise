@@ -170,7 +170,7 @@ export function EditStepModal({ open, onOpenChange, screenshotDataUrl, originalS
   if (!open) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[100] flex items-start md:items-center justify-center p-4 overflow-y-auto">
       <button
         type="button"
         className="absolute inset-0 bg-[#2D241E]/20 backdrop-blur-md animate-in fade-in duration-500"
@@ -178,10 +178,10 @@ export function EditStepModal({ open, onOpenChange, screenshotDataUrl, originalS
         aria-label="Close modal"
       />
 
-      <div className="relative w-full max-w-5xl bg-white/90 backdrop-blur-3xl border border-white rounded-[48px] overflow-hidden shadow-[0_40px_100px_rgba(45,36,30,0.15)] animate-in zoom-in-95 duration-500">
+      <div className="relative w-full max-w-5xl max-h-[calc(100dvh-2rem)] bg-white/90 backdrop-blur-3xl border border-white rounded-[48px] overflow-hidden shadow-[0_40px_100px_rgba(45,36,30,0.15)] animate-in zoom-in-95 duration-500 flex flex-col">
         <div className="absolute -top-24 -right-24 w-64 h-64 rounded-full bg-[#FAD7BD]/20 blur-3xl pointer-events-none" />
 
-        <div className="p-6 md:p-8 space-y-6 relative">
+        <div className="p-6 md:p-8 space-y-6 relative overflow-y-auto min-h-0">
           <div className="flex justify-between items-center">
             <div className="space-y-1">
               <div className="inline-flex items-center px-3 py-1 rounded-full bg-[#FAD7BD]/30 text-[#E67E22] text-[10px] font-black uppercase tracking-widest">
@@ -401,6 +401,11 @@ export function EditStepModal({ open, onOpenChange, screenshotDataUrl, originalS
                   highlightColor={stepHighlightColor}
                   hoveredBubbleNumber={hoveredLegendBubbleNumber}
                   hoverHighlightColor="#E67E22"
+                  onBubbleHoverChange={setHoveredLegendBubbleNumber}
+                  onBubbleDelete={(bubbleNumber) => {
+                    void handleRemoveLegendItem(bubbleNumber);
+                  }}
+                  disableBubbleDelete={isUpdatingLegend}
                 />
                 {redactEnabled && (
                   <div className="absolute top-4 right-4">

@@ -7,6 +7,9 @@ interface StepLegendOverlayProps {
   highlightColor: string;
   hoveredBubbleNumber?: number | null;
   hoverHighlightColor?: string;
+  onBubbleHoverChange?: (bubbleNumber: number | null) => void;
+  onBubbleDelete?: (bubbleNumber: number) => void;
+  disableBubbleDelete?: boolean;
 }
 
 function hexToRgba(hex: string, alpha: number): string {
@@ -24,6 +27,9 @@ export function StepLegendOverlay({
   highlightColor,
   hoveredBubbleNumber = null,
   hoverHighlightColor = '#E67E22',
+  onBubbleHoverChange,
+  onBubbleDelete,
+  disableBubbleDelete = false,
 }: StepLegendOverlayProps) {
   if (legendItems.length === 0 || imageWidth <= 0 || imageHeight <= 0) {
     return null;
@@ -54,16 +60,27 @@ export function StepLegendOverlay({
                 backgroundColor: hexToRgba(itemHighlightColor, 0.1),
               }}
             />
-            <div
-              className="absolute w-6 h-6 rounded-full text-white text-[11px] font-black flex items-center justify-center border border-white shadow-lg"
+            <button
+              type="button"
+              className="absolute w-6 h-6 rounded-full text-white text-[11px] font-black flex items-center justify-center border border-white shadow-lg pointer-events-auto transition-colors"
               style={{
                 left: `${bubbleLeft}%`,
                 top: `${bubbleTop}%`,
                 backgroundColor: itemHighlightColor,
               }}
+              aria-label={isHovered && onBubbleDelete ? `Delete highlighted element ${item.bubbleNumber}` : `Highlighted element ${item.bubbleNumber}`}
+              onMouseEnter={() => onBubbleHoverChange?.(item.bubbleNumber)}
+              onMouseLeave={() => onBubbleHoverChange?.(null)}
+              onClick={() => {
+                if (!onBubbleDelete || disableBubbleDelete) {
+                  return;
+                }
+                onBubbleDelete(item.bubbleNumber);
+              }}
+              disabled={disableBubbleDelete}
             >
-              {item.bubbleNumber}
-            </div>
+              {isHovered && onBubbleDelete ? '×' : item.bubbleNumber}
+            </button>
           </div>
         );
       })}

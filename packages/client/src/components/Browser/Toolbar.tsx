@@ -1,4 +1,4 @@
-import { useCallback, useState, useEffect } from 'react';
+import { useCallback, useState } from 'react';
 
 import { ArrowLeft, ArrowRight, RotateCw, ShieldCheck } from 'lucide-react';
 
@@ -11,24 +11,25 @@ export function Toolbar() {
   const isConnected = useSessionStore((s) => s.isConnected);
   const stepHighlightColor = useSessionStore((s) => s.stepHighlightColor);
   const setStepHighlightColor = useSessionStore((s) => s.setStepHighlightColor);
-  const [urlInput, setUrlInput] = useState(sessionState?.url ?? '');
+  const [urlInput, setUrlInput] = useState('');
+  const [isUrlInputDirty, setIsUrlInputDirty] = useState(false);
   const [isNavigating, setIsNavigating] = useState(false);
-
-  useEffect(() => {
-    setUrlInput(sessionState?.url ?? '');
-  }, [sessionState?.url]);
+  const displayedUrl = isUrlInputDirty ? urlInput : (sessionState?.url ?? '');
 
   const handleNavigate = useCallback(() => {
-    if (urlInput.trim()) {
-      let url = urlInput.trim();
+    const rawUrl = isUrlInputDirty ? urlInput : (sessionState?.url ?? '');
+    if (rawUrl.trim()) {
+      let url = rawUrl.trim();
       if (!url.startsWith('http://') && !url.startsWith('https://')) {
         url = `https://${url}`;
       }
       setIsNavigating(true);
       wsClient.navigate(url);
       setTimeout(() => setIsNavigating(false), 1200);
+      setUrlInput(url);
+      setIsUrlInputDirty(false);
     }
-  }, [urlInput]);
+  }, [isUrlInputDirty, sessionState?.url, urlInput]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
@@ -89,8 +90,11 @@ export function Toolbar() {
         </div>
         <input
           type="text"
-          value={urlInput}
-          onChange={(e) => setUrlInput(e.target.value)}
+          value={displayedUrl}
+          onChange={(e) => {
+            setUrlInput(e.target.value);
+            setIsUrlInputDirty(true);
+          }}
           onKeyDown={handleKeyDown}
           className="w-full bg-white border border-black/5 rounded-full py-2.5 pl-10 pr-4 text-xs font-bold text-[#6B5E55] focus:border-[#E67E22]/40 outline-none transition-all shadow-sm group-hover:shadow-md"
           disabled={!isConnected}

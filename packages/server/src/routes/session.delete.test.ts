@@ -39,9 +39,9 @@ async function deleteStepRequest(sessionId: string, token: string, stepId: strin
     headers: {
       Authorization: `Bearer ${token}`,
     },
-  }));
+  })) as Response;
 
-  return await response.json() as DeleteResponse;
+  return JSON.parse(await response.text()) as DeleteResponse;
 }
 
 afterEach(async () => {

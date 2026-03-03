@@ -5,6 +5,8 @@ interface StepLegendOverlayProps {
   imageWidth: number;
   imageHeight: number;
   highlightColor: string;
+  hoveredBubbleNumber?: number | null;
+  hoverHighlightColor?: string;
 }
 
 function hexToRgba(hex: string, alpha: number): string {
@@ -15,7 +17,14 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-export function StepLegendOverlay({ legendItems, imageWidth, imageHeight, highlightColor }: StepLegendOverlayProps) {
+export function StepLegendOverlay({
+  legendItems,
+  imageWidth,
+  imageHeight,
+  highlightColor,
+  hoveredBubbleNumber = null,
+  hoverHighlightColor = '#E67E22',
+}: StepLegendOverlayProps) {
   if (legendItems.length === 0 || imageWidth <= 0 || imageHeight <= 0) {
     return null;
   }
@@ -23,6 +32,8 @@ export function StepLegendOverlay({ legendItems, imageWidth, imageHeight, highli
   return (
     <div className="absolute inset-0 pointer-events-none">
       {legendItems.map((item) => {
+        const isHovered = item.bubbleNumber === hoveredBubbleNumber;
+        const itemHighlightColor = isHovered ? hoverHighlightColor : highlightColor;
         const left = (item.boundingBox.x / imageWidth) * 100;
         const top = (item.boundingBox.y / imageHeight) * 100;
         const width = (item.boundingBox.width / imageWidth) * 100;
@@ -39,8 +50,8 @@ export function StepLegendOverlay({ legendItems, imageWidth, imageHeight, highli
                 top: `${top}%`,
                 width: `${width}%`,
                 height: `${height}%`,
-                borderColor: highlightColor,
-                backgroundColor: hexToRgba(highlightColor, 0.1),
+                borderColor: itemHighlightColor,
+                backgroundColor: hexToRgba(itemHighlightColor, 0.1),
               }}
             />
             <div
@@ -48,7 +59,7 @@ export function StepLegendOverlay({ legendItems, imageWidth, imageHeight, highli
               style={{
                 left: `${bubbleLeft}%`,
                 top: `${bubbleTop}%`,
-                backgroundColor: highlightColor,
+                backgroundColor: itemHighlightColor,
               }}
             >
               {item.bubbleNumber}

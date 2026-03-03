@@ -48,6 +48,7 @@ export function EditStepModal({ open, onOpenChange, screenshotDataUrl, originalS
   const [editableLegendItems, setEditableLegendItems] = useState<StepLegendItem[]>(legendItems ?? []);
   const [imageNaturalSize, setImageNaturalSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
   const [isUpdatingLegend, setIsUpdatingLegend] = useState(false);
+  const [hoveredLegendBubbleNumber, setHoveredLegendBubbleNumber] = useState<number | null>(null);
 
   useEffect(() => {
     setRedactEnabled(isRedacted ?? false);
@@ -80,6 +81,7 @@ export function EditStepModal({ open, onOpenChange, screenshotDataUrl, originalS
       setIsEditing(false);
       setEditedCaption(caption);
       setEditableLegendItems(legendItems ?? []);
+      setHoveredLegendBubbleNumber(null);
     }
   }, [open, caption, legendItems]);
 
@@ -341,13 +343,20 @@ export function EditStepModal({ open, onOpenChange, screenshotDataUrl, originalS
                   </div>
                 </div>
 
-                <div className="mt-3 max-h-56 overflow-y-auto space-y-2 pr-1">
+                <div
+                  className="mt-3 max-h-56 overflow-y-auto space-y-2 pr-1"
+                  onMouseLeave={() => setHoveredLegendBubbleNumber(null)}
+                >
                   {editableLegendItems.map((item) => (
-                    <div key={`${item.bubbleNumber}:${item.label}`} className="flex items-center justify-between rounded-xl bg-white/70 px-3 py-2 border border-black/5">
+                    <div
+                      key={`${item.bubbleNumber}:${item.label}`}
+                      className="flex items-center justify-between rounded-xl bg-white/70 px-3 py-2 border border-black/5"
+                      onMouseEnter={() => setHoveredLegendBubbleNumber(item.bubbleNumber)}
+                    >
                       <div className="flex items-center gap-3 min-w-0">
                         <div
                           className="w-6 h-6 rounded-full text-white text-[11px] font-black flex items-center justify-center"
-                          style={{ backgroundColor: stepHighlightColor }}
+                          style={{ backgroundColor: hoveredLegendBubbleNumber === item.bubbleNumber ? '#E67E22' : stepHighlightColor }}
                         >
                           {item.bubbleNumber}
                         </div>
@@ -390,6 +399,8 @@ export function EditStepModal({ open, onOpenChange, screenshotDataUrl, originalS
                   imageWidth={imageNaturalSize.width}
                   imageHeight={imageNaturalSize.height}
                   highlightColor={stepHighlightColor}
+                  hoveredBubbleNumber={hoveredLegendBubbleNumber}
+                  hoverHighlightColor="#E67E22"
                 />
                 {redactEnabled && (
                   <div className="absolute top-4 right-4">

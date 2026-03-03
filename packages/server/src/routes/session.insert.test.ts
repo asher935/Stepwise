@@ -46,9 +46,9 @@ async function insertStepRequest(
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({ index, step }),
-  }));
+  })) as Response;
 
-  return await response.json() as InsertResponse;
+  return JSON.parse(await response.text()) as InsertResponse;
 }
 
 afterEach(async () => {
@@ -111,9 +111,9 @@ describe('POST /api/sessions/:sessionId/steps', () => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ index: 0, autoDetect: true }),
-    }));
+    })) as Response;
 
-    const result = await response.json() as InsertResponse;
+    const result = JSON.parse(await response.text()) as InsertResponse;
     expect(result.success).toBe(false);
     expect(result.error?.message).toBe('Insert auto-detect is only available during an active live session');
   });

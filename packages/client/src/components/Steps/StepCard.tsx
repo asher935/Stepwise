@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { Trash2, Edit3, Eye, EyeOff } from 'lucide-react';
+import { Trash2, Edit3, EyeOff } from 'lucide-react';
 import type { Step } from '@stepwise/shared';
 import { useSessionStore } from '@/stores/sessionStore';
 import { EditStepModal } from './EditStepModal';

@@ -276,7 +276,7 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
       }
 
       sessionManager.updateActivity(params.sessionId);
-      let stepToInsert: Step | null = null;
+      let stepToInsert: Step | null;
       if (body.autoDetect) {
         const recorder = getSessionRecorder(params.sessionId);
         if (!recorder) {

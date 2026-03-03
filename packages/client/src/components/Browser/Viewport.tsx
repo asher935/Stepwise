@@ -1,6 +1,3 @@
-/* eslint-disable jsx-a11y/no-noninteractive-tabindex */
-/* eslint-disable jsx-a11y/no-noninteractive-element-interactions */
-/* eslint-disable jsx-a11y/click-events-have-key-events */
 import { useCallback, useRef } from 'react';
 
 import { DEFAULTS } from '@stepwise/shared';
@@ -120,27 +117,6 @@ export function Viewport() {
     );
   }, []);
 
-  // Calculate highlight overlay position based on viewport scale
-  const getHighlightStyle = useCallback((): React.CSSProperties | null => {
-    if (!hoveredElement || !imageRef.current) return null;
-
-    const rect = imageRef.current.getBoundingClientRect();
-    const scaleX = rect.width / BROWSER_DIMENSIONS.width;
-    const scaleY = rect.height / BROWSER_DIMENSIONS.height;
-
-    return {
-      position: 'absolute',
-      left: `${hoveredElement.boundingBox.x * scaleX}px`,
-      top: `${hoveredElement.boundingBox.y * scaleY}px`,
-      width: `${hoveredElement.boundingBox.width * scaleX}px`,
-      height: `${hoveredElement.boundingBox.height * scaleY}px`,
-      border: `2px solid ${hexToRgba(stepHighlightColor, 0.8)}`,
-      pointerEvents: 'none',
-      zIndex: 10,
-      borderRadius: '4px',
-    };
-  }, [hoveredElement, stepHighlightColor]);
-
   if (!isConnected || !currentFrame) {
     return (
       <div className="flex-1 flex flex-col p-8 overflow-hidden">
@@ -157,7 +133,19 @@ export function Viewport() {
     );
   }
 
-  const highlightStyle = getHighlightStyle();
+  const highlightStyle: React.CSSProperties | null = hoveredElement
+    ? {
+        position: 'absolute',
+        left: `${(hoveredElement.boundingBox.x / BROWSER_DIMENSIONS.width) * 100}%`,
+        top: `${(hoveredElement.boundingBox.y / BROWSER_DIMENSIONS.height) * 100}%`,
+        width: `${(hoveredElement.boundingBox.width / BROWSER_DIMENSIONS.width) * 100}%`,
+        height: `${(hoveredElement.boundingBox.height / BROWSER_DIMENSIONS.height) * 100}%`,
+        border: `2px solid ${hexToRgba(stepHighlightColor, 0.8)}`,
+        pointerEvents: 'none',
+        zIndex: 10,
+        borderRadius: '4px',
+      }
+    : null;
 
   return (
     <div className="flex-1 flex flex-col p-8 overflow-hidden">

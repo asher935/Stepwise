@@ -1,7 +1,6 @@
 import js from '@eslint/js';
 import tseslint from '@typescript-eslint/eslint-plugin';
 import tsparser from '@typescript-eslint/parser';
-import react from 'eslint-plugin-react';
 import reactHooks from 'eslint-plugin-react-hooks';
 import globals from 'globals';
 
@@ -12,7 +11,6 @@ export default [
     files: ['**/*.{js,jsx,ts,tsx}'],
     plugins: {
       '@typescript-eslint': tseslint,
-      react: react,
       'react-hooks': reactHooks,
     },
     languageOptions: {
@@ -32,14 +30,8 @@ export default [
         ...globals.es2021,
       },
     },
-    settings: {
-      react: {
-        version: 'detect',
-      },
-    },
     rules: {
       ...tseslint.configs.recommended.rules,
-      ...react.configs.recommended.rules,
       ...reactHooks.configs.recommended.rules,
 
       // TypeScript specific rules matching project requirements
@@ -57,9 +49,6 @@ export default [
       '@typescript-eslint/no-misused-promises': 'warn',
 
       // React specific rules
-      'react/react-in-jsx-scope': 'off', // Not needed in React 17+
-      'react/prop-types': 'off', // Using TypeScript for props validation
-      'react/display-name': 'off',
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',
 

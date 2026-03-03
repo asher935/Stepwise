@@ -626,21 +626,19 @@ export class Recorder {
     // Clear last type step on click (user is clicking a different element)
     this.clearLastTypeStep();
 
-    let screenshotData: Buffer;
     let screenshotPath: string;
     let screenshotDataUrl: string;
     let elementInfo: ElementInfo | null;
-    let redactionRects: Rect[] = [];
-    let clip: { x: number; y: number; width: number; height: number } | null = null;
+    let redactionRects: Rect[];
+    let clip: { x: number; y: number; width: number; height: number } | null;
 
     // Use pre-captured screenshot if available and coordinates match
-    if (this.pendingClickScreenshot &&
+      if (this.pendingClickScreenshot &&
         this.pendingClickScreenshot.x === x &&
         this.pendingClickScreenshot.y === y &&
         this.pendingClickScreenshot.button === button) {
 
       const pending = this.pendingClickScreenshot;
-      screenshotData = pending.screenshotData;
       screenshotPath = pending.screenshotPath;
       screenshotDataUrl = pending.screenshotDataUrl;
       elementInfo = pending.elementInfo;
@@ -668,7 +666,7 @@ export class Recorder {
           ? elementInfo.boundingBox
           : undefined
       );
-      screenshotData = capture.screenshotData;
+      const screenshotData = capture.screenshotData;
       redactionRects = capture.redactionRects;
       screenshotPath = await this.saveScreenshot(screenshotData);
       screenshotDataUrl = this.toScreenshotDataUrl(screenshotData);

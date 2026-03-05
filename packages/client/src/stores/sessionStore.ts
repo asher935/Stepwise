@@ -44,7 +44,13 @@ interface SessionStore {
   createSession: () => Promise<void>;
   startSession: (startUrl?: string) => Promise<void>;
   endSession: () => Promise<void>;
-  updateStep: (stepId: string, updates: { caption?: string; redactScreenshot?: boolean; redactedScreenshotPath?: string; legendItems?: StepLegendItem[] }) => Promise<void>;
+  updateStep: (stepId: string, updates: {
+    caption?: string;
+    redactScreenshot?: boolean;
+    redactedScreenshotPath?: string;
+    legendItems?: StepLegendItem[];
+    pageLegendItems?: StepLegendItem[];
+  }) => Promise<void>;
   toggleRedaction: (stepId: string, redact: boolean) => Promise<string | undefined>;
   deleteStep: (stepId: string) => Promise<void>;
   insertStep: (index: number, step: Omit<Step, 'index'>) => Promise<void>;
@@ -131,7 +137,13 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     }
   },
 
-  updateStep: async (stepId: string, updates: { caption?: string; redactScreenshot?: boolean; redactedScreenshotPath?: string; legendItems?: StepLegendItem[] }) => {
+  updateStep: async (stepId: string, updates: {
+    caption?: string;
+    redactScreenshot?: boolean;
+    redactedScreenshotPath?: string;
+    legendItems?: StepLegendItem[];
+    pageLegendItems?: StepLegendItem[];
+  }) => {
     const { sessionId, steps, localStepIds } = get();
     if (!sessionId) return;
 

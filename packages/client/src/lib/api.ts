@@ -94,7 +94,13 @@ class ApiClient {
   async updateStep(
     sessionId: string,
     stepId: string,
-    updates: { caption?: string; redactScreenshot?: boolean; redactedScreenshotPath?: string; legendItems?: StepLegendItem[] }
+    updates: {
+      caption?: string;
+      redactScreenshot?: boolean;
+      redactedScreenshotPath?: string;
+      legendItems?: StepLegendItem[];
+      pageLegendItems?: StepLegendItem[];
+    }
   ): Promise<Step> {
     return this.request('PATCH', `/sessions/${sessionId}/steps/${stepId}`, updates);
   }

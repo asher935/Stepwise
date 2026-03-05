@@ -824,15 +824,24 @@ export class CDPBridge {
     }
   }
 
-  async takeScreenshot(clip?: { x: number; y: number; width: number; height: number }): Promise<Buffer> {
+  async takeScreenshot(
+    clip?: { x: number; y: number; width: number; height: number },
+    fullPage: boolean = false
+  ): Promise<Buffer> {
     const options: {
       type: 'png' | 'jpeg';
       quality?: number;
       clip?: { x: number; y: number; width: number; height: number };
+      fullPage?: boolean;
     } = {
       type: env.SCREENSHOT_FORMAT,
-      clip,
     };
+
+    if (clip) {
+      options.clip = clip;
+    } else if (fullPage) {
+      options.fullPage = true;
+    }
 
     // JPEG quality setting only applies to JPEG format
     if (env.SCREENSHOT_FORMAT === 'jpeg') {
@@ -891,14 +900,15 @@ export class CDPBridge {
    */
   async takeScreenshotWithHighlight(
     boundingBox: { x: number; y: number; width: number; height: number },
-    clip?: { x: number; y: number; width: number; height: number }
+    clip?: { x: number; y: number; width: number; height: number },
+    fullPage: boolean = false
   ): Promise<Buffer> {
     await this.injectHighlightOverlay(boundingBox);
 
     // Small delay to ensure the overlay is rendered
     await new Promise(resolve => setTimeout(resolve, 50));
 
-    const screenshot = await this.takeScreenshot(clip);
+    const screenshot = await this.takeScreenshot(clip, fullPage);
 
     await this.removeHighlightOverlay();
 

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { X, Download, Check, Edit3, Image as ImageIcon, Eye, EyeOff } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import type { StepLegendItem } from '@stepwise/shared';
@@ -10,12 +10,14 @@ interface EditStepModalProps {
   onOpenChange: (open: boolean) => void;
   screenshotDataUrl?: string;
   fullScreenshotDataUrl?: string;
+  pageScreenshotDataUrl?: string;
   originalScreenshotDataUrl?: string;
   stepNumber: number;
   caption: string;
   onSaveCaption: (caption: string) => Promise<void>;
   legendItems?: StepLegendItem[];
-  onSaveLegendItems?: (legendItems: StepLegendItem[], caption: string) => Promise<void>;
+  pageLegendItems?: StepLegendItem[];
+  onSaveLegendItems?: (legendItems: StepLegendItem[], caption: string, pageLegendItems: StepLegendItem[]) => Promise<void>;
   onToggleRedaction?: (redact: boolean) => Promise<string | undefined>;
   canToggleRedaction?: boolean;
   isRedacted?: boolean;
@@ -37,7 +39,18 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-export function EditStepModal({ open, onOpenChange, screenshotDataUrl, fullScreenshotDataUrl, originalScreenshotDataUrl, stepNumber, caption, onSaveCaption, legendItems, onSaveLegendItems, onToggleRedaction, canToggleRedaction, isRedacted }: EditStepModalProps) {
+function getLegendItemKey(item: StepLegendItem): string {
+  return [
+    item.kind,
+    item.label,
+    item.boundingBox.x,
+    item.boundingBox.y,
+    item.boundingBox.width,
+    item.boundingBox.height,
+  ].join(':');
+}
+
+export function EditStepModal({ open, onOpenChange, screenshotDataUrl, fullScreenshotDataUrl, pageScreenshotDataUrl, originalScreenshotDataUrl, stepNumber, caption, onSaveCaption, legendItems, pageLegendItems, onSaveLegendItems, onToggleRedaction, canToggleRedaction, isRedacted }: EditStepModalProps) {
   const stepHighlightColor = useSessionStore((s) => s.stepHighlightColor);
   const [editedCaption, setEditedCaption] = useState(caption);
   const [isSaving, setIsSaving] = useState(false);
@@ -47,10 +60,14 @@ export function EditStepModal({ open, onOpenChange, screenshotDataUrl, fullScree
   const [originalScreenshotUrl, setOriginalScreenshotUrl] = useState(screenshotDataUrl);
   const [redactedScreenshotUrl, setRedactedScreenshotUrl] = useState<string | undefined>(undefined);
   const [editableLegendItems, setEditableLegendItems] = useState<StepLegendItem[]>(legendItems ?? []);
+  const [editablePageLegendItems, setEditablePageLegendItems] = useState<StepLegendItem[]>(pageLegendItems ?? legendItems ?? []);
   const [imageNaturalSize, setImageNaturalSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
   const [isUpdatingLegend, setIsUpdatingLegend] = useState(false);
   const [hoveredLegendBubbleNumber, setHoveredLegendBubbleNumber] = useState<number | null>(null);
-  const [screenshotMode, setScreenshotMode] = useState<'zoomed' | 'full'>('zoomed');
+  const [screenshotMode, setScreenshotMode] = useState<'zoomed' | 'viewport' | 'fullPage'>('zoomed');
+  const wasOpenRef = useRef(false);
+  const isFullPageMode = screenshotMode === 'fullPage';
+  const displayedLegendItems = isFullPageMode ? editablePageLegendItems : editableLegendItems;
 
   useEffect(() => {
     setRedactEnabled(isRedacted ?? false);
@@ -79,14 +96,16 @@ export function EditStepModal({ open, onOpenChange, screenshotDataUrl, fullScree
   }, [handleEscape]);
 
   useEffect(() => {
-    if (open) {
+    if (open && !wasOpenRef.current) {
       setIsEditing(false);
       setEditedCaption(caption);
       setEditableLegendItems(legendItems ?? []);
+      setEditablePageLegendItems(pageLegendItems ?? legendItems ?? []);
       setHoveredLegendBubbleNumber(null);
       setScreenshotMode('zoomed');
     }
-  }, [open, caption, legendItems]);
+    wasOpenRef.current = open;
+  }, [open, caption, legendItems, pageLegendItems]);
 
   useEffect(() => {
     if (!isEditing) {
@@ -97,7 +116,9 @@ export function EditStepModal({ open, onOpenChange, screenshotDataUrl, fullScree
   const handleDownload = () => {
     const currentScreenshotUrl = screenshotMode === 'zoomed'
       ? (redactedScreenshotUrl || originalScreenshotUrl)
-      : (fullScreenshotDataUrl || originalScreenshotUrl);
+      : screenshotMode === 'viewport'
+        ? (fullScreenshotDataUrl || originalScreenshotUrl)
+        : (pageScreenshotDataUrl || fullScreenshotDataUrl || originalScreenshotUrl);
     const urlToDownload = currentScreenshotUrl;
     if (!urlToDownload) return;
     const a = document.createElement('a');
@@ -156,26 +177,38 @@ export function EditStepModal({ open, onOpenChange, screenshotDataUrl, fullScree
       return;
     }
 
-    const nextItems = editableLegendItems
-      .filter((item) => item.bubbleNumber !== bubbleNumber)
+    const removedItem = displayedLegendItems.find((item) => item.bubbleNumber === bubbleNumber);
+    if (!removedItem) {
+      return;
+    }
+
+    const removedKey = getLegendItemKey(removedItem);
+    const nextPageItems = editablePageLegendItems
+      .filter((item) => getLegendItemKey(item) !== removedKey)
       .map((item, index) => ({ ...item, bubbleNumber: index + 1 }));
-    const nextCaption = buildLegendCaption(nextItems);
+    const nextViewportItems = editableLegendItems
+      .filter((item) => getLegendItemKey(item) !== removedKey)
+      .map((item, index) => ({ ...item, bubbleNumber: index + 1 }));
+    const nextCaption = buildLegendCaption(nextViewportItems);
 
     setIsUpdatingLegend(true);
     try {
-      await onSaveLegendItems(nextItems, nextCaption);
-      setEditableLegendItems(nextItems);
+      await onSaveLegendItems(nextViewportItems, nextCaption, nextPageItems);
+      setEditableLegendItems(nextViewportItems);
+      setEditablePageLegendItems(nextPageItems);
       if (!isEditing) {
         setEditedCaption(nextCaption);
       }
     } finally {
       setIsUpdatingLegend(false);
     }
-  }, [editableLegendItems, onSaveLegendItems, isEditing]);
+  }, [displayedLegendItems, editableLegendItems, editablePageLegendItems, onSaveLegendItems, isEditing]);
 
   const screenshotToDisplay = screenshotMode === 'zoomed'
     ? (redactedScreenshotUrl || originalScreenshotUrl)
-    : (fullScreenshotDataUrl || originalScreenshotUrl);
+    : screenshotMode === 'viewport'
+      ? (fullScreenshotDataUrl || originalScreenshotUrl)
+      : (pageScreenshotDataUrl || fullScreenshotDataUrl || originalScreenshotUrl);
 
   if (!open) return null;
 
@@ -333,7 +366,7 @@ export function EditStepModal({ open, onOpenChange, screenshotDataUrl, fullScree
             </div>
           )}
 
-          {(originalScreenshotUrl || fullScreenshotDataUrl) && (
+          {(originalScreenshotUrl || fullScreenshotDataUrl || pageScreenshotDataUrl) && (
             <div className="space-y-3">
               <div className="text-[10px] font-black text-[#BBAFA7] uppercase tracking-widest ml-4">
                 Screenshot Mode
@@ -348,17 +381,25 @@ export function EditStepModal({ open, onOpenChange, screenshotDataUrl, fullScree
                 </button>
                 <button
                   type="button"
-                  onClick={() => setScreenshotMode('full')}
+                  onClick={() => setScreenshotMode('viewport')}
                   disabled={!fullScreenshotDataUrl}
-                  className={`px-4 py-2 rounded-full text-xs font-black uppercase tracking-wider transition-colors ${screenshotMode === 'full' ? 'bg-[#E67E22] text-white' : 'bg-white text-[#2D241E] hover:bg-[#F5EBE0]'} disabled:opacity-40 disabled:cursor-not-allowed`}
+                  className={`px-4 py-2 rounded-full text-xs font-black uppercase tracking-wider transition-colors ${screenshotMode === 'viewport' ? 'bg-[#E67E22] text-white' : 'bg-white text-[#2D241E] hover:bg-[#F5EBE0]'} disabled:opacity-40 disabled:cursor-not-allowed`}
                 >
-                  Full view
+                  Viewport
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setScreenshotMode('fullPage')}
+                  disabled={!pageScreenshotDataUrl}
+                  className={`px-4 py-2 rounded-full text-xs font-black uppercase tracking-wider transition-colors ${screenshotMode === 'fullPage' ? 'bg-[#E67E22] text-white' : 'bg-white text-[#2D241E] hover:bg-[#F5EBE0]'} disabled:opacity-40 disabled:cursor-not-allowed`}
+                >
+                  Full page
                 </button>
               </div>
             </div>
           )}
 
-          {editableLegendItems.length > 0 && onSaveLegendItems && (
+          {displayedLegendItems.length > 0 && (
             <div className="space-y-3">
               <div className="bg-[#FDF2E9] border border-black/5 rounded-[24px] py-3 px-4">
                 <div className="w-full flex items-center justify-between">
@@ -373,7 +414,7 @@ export function EditStepModal({ open, onOpenChange, screenshotDataUrl, fullScree
                         backgroundColor: hexToRgba(stepHighlightColor, 0.14),
                       }}
                     >
-                      {editableLegendItems.length}
+                      {displayedLegendItems.length}
                     </span>
                   </div>
                 </div>
@@ -382,7 +423,7 @@ export function EditStepModal({ open, onOpenChange, screenshotDataUrl, fullScree
                   className="mt-3 max-h-56 overflow-y-auto space-y-2 pr-1"
                   onMouseLeave={() => setHoveredLegendBubbleNumber(null)}
                 >
-                  {editableLegendItems.map((item) => (
+                  {displayedLegendItems.map((item) => (
                     <div
                       key={`${item.bubbleNumber}:${item.label}`}
                       className="flex items-center justify-between rounded-xl bg-white/70 px-3 py-2 border border-black/5"
@@ -397,16 +438,18 @@ export function EditStepModal({ open, onOpenChange, screenshotDataUrl, fullScree
                         </div>
                         <div className="text-sm font-bold text-[#2D241E] truncate">{item.label}</div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          void handleRemoveLegendItem(item.bubbleNumber);
-                        }}
-                        disabled={isUpdatingLegend}
-                        className="text-xs font-black uppercase tracking-wider text-red-500 hover:text-red-600 disabled:opacity-50"
-                      >
-                        Remove
-                      </button>
+                      {onSaveLegendItems && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void handleRemoveLegendItem(item.bubbleNumber);
+                          }}
+                          disabled={isUpdatingLegend}
+                          className="text-xs font-black uppercase tracking-wider text-red-500 hover:text-red-600 disabled:opacity-50"
+                        >
+                          Remove
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -430,16 +473,18 @@ export function EditStepModal({ open, onOpenChange, screenshotDataUrl, fullScree
                   }}
                 />
                 <StepLegendOverlay
-                  legendItems={editableLegendItems}
+                  legendItems={displayedLegendItems}
                   imageWidth={imageNaturalSize.width}
                   imageHeight={imageNaturalSize.height}
                   highlightColor={stepHighlightColor}
                   hoveredBubbleNumber={hoveredLegendBubbleNumber}
                   hoverHighlightColor="#E67E22"
                   onBubbleHoverChange={setHoveredLegendBubbleNumber}
-                  onBubbleDelete={(bubbleNumber) => {
-                    void handleRemoveLegendItem(bubbleNumber);
-                  }}
+                  onBubbleDelete={onSaveLegendItems
+                    ? (bubbleNumber) => {
+                      void handleRemoveLegendItem(bubbleNumber);
+                    }
+                    : undefined}
                   disableBubbleDelete={isUpdatingLegend}
                 />
                 {redactEnabled && (

@@ -14,6 +14,7 @@ export interface StepLegendItem {
   bubbleNumber: number;
   label: string;
   kind: 'field' | 'button';
+  inViewport?: boolean;
   semanticKey?: 'username' | 'password';
   boundingBox: { x: number; y: number; width: number; height: number };
 }
@@ -27,6 +28,8 @@ export interface BaseStep {
   screenshotDataUrl?: string;
   fullScreenshotPath?: string;
   fullScreenshotDataUrl?: string;
+  pageScreenshotPath?: string;
+  pageScreenshotDataUrl?: string;
   caption: string;
   isEdited: boolean;
   screenshotClip?: { x: number; y: number; width: number; height: number };
@@ -37,6 +40,7 @@ export interface BaseStep {
   originalScreenshotDataUrl?: string;
   highlightColor?: string;
   legendItems?: StepLegendItem[];
+  pageLegendItems?: StepLegendItem[];
 }
 
 /** Click action step */

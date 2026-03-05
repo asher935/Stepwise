@@ -160,6 +160,7 @@ export function StepCard({ step }: StepCardProps) {
         }}
         screenshotDataUrl={step.screenshotDataUrl}
         fullScreenshotDataUrl={step.fullScreenshotDataUrl}
+        pageScreenshotDataUrl={step.pageScreenshotDataUrl}
         originalScreenshotDataUrl={step.originalScreenshotDataUrl}
         stepNumber={step.index + 1}
         caption={step.caption}
@@ -167,8 +168,9 @@ export function StepCard({ step }: StepCardProps) {
           await updateStep(step.id, { caption: newCaption });
         }}
         legendItems={step.legendItems}
-        onSaveLegendItems={async (legendItems, nextCaption) => {
-          await updateStep(step.id, { legendItems, caption: nextCaption });
+        pageLegendItems={step.pageLegendItems}
+        onSaveLegendItems={async (legendItems, nextCaption, pageLegendItems) => {
+          await updateStep(step.id, { legendItems, pageLegendItems, caption: nextCaption });
         }}
         onToggleRedaction={async (redact: boolean) => {
           return await toggleRedaction(step.id, redact);

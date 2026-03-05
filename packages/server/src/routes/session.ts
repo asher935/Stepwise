@@ -62,6 +62,7 @@ function isLegendItem(value: unknown): value is StepLegendItem {
   if (!item.boundingBox || typeof item.boundingBox !== 'object') return false;
   const box = item.boundingBox as { x?: unknown; y?: unknown; width?: unknown; height?: unknown };
   if (typeof box.x !== 'number' || typeof box.y !== 'number' || typeof box.width !== 'number' || typeof box.height !== 'number') return false;
+  if (item.inViewport !== undefined && typeof item.inViewport !== 'boolean') return false;
   if (item.semanticKey !== undefined && item.semanticKey !== 'username' && item.semanticKey !== 'password') return false;
   return true;
 }
@@ -527,6 +528,14 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
         (updatedStep as Step & { legendItems?: StepLegendItem[] }).legendItems = legendItems;
       }
 
+      if (body.pageLegendItems !== undefined && Array.isArray(body.pageLegendItems)) {
+        const pageLegendItems = body.pageLegendItems.filter(isLegendItem).map((item, index) => ({
+          ...item,
+          bubbleNumber: index + 1,
+        }));
+        (updatedStep as Step & { pageLegendItems?: StepLegendItem[] }).pageLegendItems = pageLegendItems;
+      }
+
       steps[stepIndex] = updatedStep;
 
       return { success: true, data: updatedStep };
@@ -541,6 +550,7 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
         redactScreenshot: t.Optional(t.Boolean()),
         redactedScreenshotPath: t.Optional(t.String()),
         legendItems: t.Optional(t.Array(t.Unknown())),
+        pageLegendItems: t.Optional(t.Array(t.Unknown())),
       }),
     }
   )

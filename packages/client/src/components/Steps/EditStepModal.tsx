@@ -9,6 +9,7 @@ interface EditStepModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   screenshotDataUrl?: string;
+  fullScreenshotDataUrl?: string;
   originalScreenshotDataUrl?: string;
   stepNumber: number;
   caption: string;
@@ -36,7 +37,7 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-export function EditStepModal({ open, onOpenChange, screenshotDataUrl, originalScreenshotDataUrl, stepNumber, caption, onSaveCaption, legendItems, onSaveLegendItems, onToggleRedaction, canToggleRedaction, isRedacted }: EditStepModalProps) {
+export function EditStepModal({ open, onOpenChange, screenshotDataUrl, fullScreenshotDataUrl, originalScreenshotDataUrl, stepNumber, caption, onSaveCaption, legendItems, onSaveLegendItems, onToggleRedaction, canToggleRedaction, isRedacted }: EditStepModalProps) {
   const stepHighlightColor = useSessionStore((s) => s.stepHighlightColor);
   const [editedCaption, setEditedCaption] = useState(caption);
   const [isSaving, setIsSaving] = useState(false);
@@ -49,6 +50,7 @@ export function EditStepModal({ open, onOpenChange, screenshotDataUrl, originalS
   const [imageNaturalSize, setImageNaturalSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
   const [isUpdatingLegend, setIsUpdatingLegend] = useState(false);
   const [hoveredLegendBubbleNumber, setHoveredLegendBubbleNumber] = useState<number | null>(null);
+  const [screenshotMode, setScreenshotMode] = useState<'zoomed' | 'full'>('zoomed');
 
   useEffect(() => {
     setRedactEnabled(isRedacted ?? false);
@@ -82,6 +84,7 @@ export function EditStepModal({ open, onOpenChange, screenshotDataUrl, originalS
       setEditedCaption(caption);
       setEditableLegendItems(legendItems ?? []);
       setHoveredLegendBubbleNumber(null);
+      setScreenshotMode('zoomed');
     }
   }, [open, caption, legendItems]);
 
@@ -92,7 +95,10 @@ export function EditStepModal({ open, onOpenChange, screenshotDataUrl, originalS
   }, [caption, isEditing]);
 
   const handleDownload = () => {
-    const urlToDownload = redactedScreenshotUrl || originalScreenshotUrl;
+    const currentScreenshotUrl = screenshotMode === 'zoomed'
+      ? (redactedScreenshotUrl || originalScreenshotUrl)
+      : (fullScreenshotDataUrl || originalScreenshotUrl);
+    const urlToDownload = currentScreenshotUrl;
     if (!urlToDownload) return;
     const a = document.createElement('a');
     a.href = urlToDownload;
@@ -166,6 +172,10 @@ export function EditStepModal({ open, onOpenChange, screenshotDataUrl, originalS
       setIsUpdatingLegend(false);
     }
   }, [editableLegendItems, onSaveLegendItems, isEditing]);
+
+  const screenshotToDisplay = screenshotMode === 'zoomed'
+    ? (redactedScreenshotUrl || originalScreenshotUrl)
+    : (fullScreenshotDataUrl || originalScreenshotUrl);
 
   if (!open) return null;
 
@@ -323,6 +333,31 @@ export function EditStepModal({ open, onOpenChange, screenshotDataUrl, originalS
             </div>
           )}
 
+          {(originalScreenshotUrl || fullScreenshotDataUrl) && (
+            <div className="space-y-3">
+              <div className="text-[10px] font-black text-[#BBAFA7] uppercase tracking-widest ml-4">
+                Screenshot Mode
+              </div>
+              <div className="bg-[#FDF2E9] border border-black/5 rounded-[24px] p-2 inline-flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setScreenshotMode('zoomed')}
+                  className={`px-4 py-2 rounded-full text-xs font-black uppercase tracking-wider transition-colors ${screenshotMode === 'zoomed' ? 'bg-[#E67E22] text-white' : 'bg-white text-[#2D241E] hover:bg-[#F5EBE0]'}`}
+                >
+                  Zoomed
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setScreenshotMode('full')}
+                  disabled={!fullScreenshotDataUrl}
+                  className={`px-4 py-2 rounded-full text-xs font-black uppercase tracking-wider transition-colors ${screenshotMode === 'full' ? 'bg-[#E67E22] text-white' : 'bg-white text-[#2D241E] hover:bg-[#F5EBE0]'} disabled:opacity-40 disabled:cursor-not-allowed`}
+                >
+                  Full view
+                </button>
+              </div>
+            </div>
+          )}
+
           {editableLegendItems.length > 0 && onSaveLegendItems && (
             <div className="space-y-3">
               <div className="bg-[#FDF2E9] border border-black/5 rounded-[24px] py-3 px-4">
@@ -380,10 +415,10 @@ export function EditStepModal({ open, onOpenChange, screenshotDataUrl, originalS
           )}
 
           <div className="relative bg-[#FDF2E9] rounded-[32px] overflow-hidden border border-black/5 min-h-[300px]">
-            {originalScreenshotUrl ? (
+            {screenshotToDisplay ? (
               <div className="relative">
                 <img
-                  src={redactEnabled && redactedScreenshotUrl ? redactedScreenshotUrl : originalScreenshotUrl}
+                  src={screenshotToDisplay}
                   alt={`Step ${stepNumber} screenshot`}
                   className="w-full h-auto"
                   onLoad={(event) => {

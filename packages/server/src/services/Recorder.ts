@@ -61,6 +61,8 @@ export class Recorder {
     screenshotData: Buffer;
     screenshotPath: string;
     screenshotDataUrl: string;
+    fullScreenshotPath: string;
+    fullScreenshotDataUrl: string;
     elementInfo: ElementInfo | null;
     redactionRects: Rect[];
     clip?: { x: number; y: number; width: number; height: number } | null;
@@ -161,7 +163,9 @@ export class Recorder {
   private createBaseStep(
     screenshotPath: string,
     screenshotDataUrl: string,
-    screenshotClip?: { x: number; y: number; width: number; height: number }
+    screenshotClip?: { x: number; y: number; width: number; height: number },
+    fullScreenshotPath?: string,
+    fullScreenshotDataUrl?: string
   ): Omit<Step, 'action'> {
     const index = this.session.steps.length;
     return {
@@ -170,6 +174,8 @@ export class Recorder {
       timestamp: Date.now(),
       screenshotPath,
       screenshotDataUrl,
+      fullScreenshotPath,
+      fullScreenshotDataUrl,
       caption: '',
       isEdited: false,
       redactScreenshot: false,
@@ -595,6 +601,18 @@ export class Recorder {
     );
     const screenshotPath = await this.saveScreenshot(screenshotData);
     const screenshotDataUrl = this.toScreenshotDataUrl(screenshotData);
+    const fullCapture = clip
+      ? await this.captureScreenshot(
+        0,
+        undefined,
+        elementInfo?.boundingBox && elementInfo.boundingBox.width > 0 && elementInfo.boundingBox.height > 0
+          ? elementInfo.boundingBox
+          : undefined
+      )
+      : null;
+    const fullScreenshotData = fullCapture?.screenshotData ?? screenshotData;
+    const fullScreenshotPath = clip ? await this.saveScreenshot(fullScreenshotData) : screenshotPath;
+    const fullScreenshotDataUrl = clip ? this.toScreenshotDataUrl(fullScreenshotData) : screenshotDataUrl;
 
     // Store for later use in recordClick
     this.pendingClickScreenshot = {
@@ -604,6 +622,8 @@ export class Recorder {
       screenshotData,
       screenshotPath,
       screenshotDataUrl,
+      fullScreenshotPath,
+      fullScreenshotDataUrl,
       elementInfo,
       redactionRects,
       clip
@@ -628,6 +648,8 @@ export class Recorder {
 
     let screenshotPath: string;
     let screenshotDataUrl: string;
+    let fullScreenshotPath: string;
+    let fullScreenshotDataUrl: string;
     let elementInfo: ElementInfo | null;
     let redactionRects: Rect[];
     let clip: { x: number; y: number; width: number; height: number } | null;
@@ -641,6 +663,8 @@ export class Recorder {
       const pending = this.pendingClickScreenshot;
       screenshotPath = pending.screenshotPath;
       screenshotDataUrl = pending.screenshotDataUrl;
+      fullScreenshotPath = pending.fullScreenshotPath;
+      fullScreenshotDataUrl = pending.fullScreenshotDataUrl;
       elementInfo = pending.elementInfo;
       redactionRects = pending.redactionRects;
       clip = pending.clip ?? null;
@@ -670,6 +694,18 @@ export class Recorder {
       redactionRects = capture.redactionRects;
       screenshotPath = await this.saveScreenshot(screenshotData);
       screenshotDataUrl = this.toScreenshotDataUrl(screenshotData);
+      const fullCapture = clip
+        ? await this.captureScreenshot(
+          0,
+          undefined,
+          elementInfo?.boundingBox && elementInfo.boundingBox.width > 0 && elementInfo.boundingBox.height > 0
+            ? elementInfo.boundingBox
+            : undefined
+        )
+        : null;
+      const fullScreenshotData = fullCapture?.screenshotData ?? screenshotData;
+      fullScreenshotPath = clip ? await this.saveScreenshot(fullScreenshotData) : screenshotPath;
+      fullScreenshotDataUrl = clip ? this.toScreenshotDataUrl(fullScreenshotData) : screenshotDataUrl;
     }
 
     // Create highlight
@@ -686,7 +722,13 @@ export class Recorder {
     const caption = this.generateClickCaption(target, button);
 
     const step: ClickStep = {
-      ...this.createBaseStep(screenshotPath, screenshotDataUrl, clip ?? undefined),
+      ...this.createBaseStep(
+        screenshotPath,
+        screenshotDataUrl,
+        clip ?? undefined,
+        fullScreenshotPath,
+        fullScreenshotDataUrl
+      ),
       action: 'click',
       target,
       button,
@@ -823,6 +865,17 @@ export class Recorder {
       );
       const screenshotData = capture.screenshotData;
       const screenshotPath = await this.saveScreenshot(screenshotData);
+      const fullCapture = step.screenshotClip
+        ? await this.captureScreenshot(
+          0,
+          undefined,
+          step.target.boundingBox && step.target.boundingBox.width > 0 && step.target.boundingBox.height > 0
+            ? step.target.boundingBox
+            : undefined
+        )
+        : null;
+      const fullScreenshotData = fullCapture?.screenshotData ?? screenshotData;
+      const fullScreenshotPath = step.screenshotClip ? await this.saveScreenshot(fullScreenshotData) : screenshotPath;
 
       // Redact if needed
       let finalScreenshotData = screenshotData;
@@ -831,10 +884,13 @@ export class Recorder {
       }
 
       const screenshotDataUrl = this.toScreenshotDataUrl(finalScreenshotData);
+      const fullScreenshotDataUrl = this.toScreenshotDataUrl(fullScreenshotData);
 
       // Update step with screenshot
       step.screenshotPath = screenshotPath;
       step.screenshotDataUrl = screenshotDataUrl;
+      step.fullScreenshotPath = fullScreenshotPath;
+      step.fullScreenshotDataUrl = fullScreenshotDataUrl;
       step.redactionRects = capture.redactionRects;
 
       // Move accumulated text to rawValue
@@ -910,6 +966,17 @@ export class Recorder {
       const screenshotData = capture.screenshotData;
 
       const screenshotPath = await this.saveScreenshot(screenshotData);
+      const fullCapture = clip
+        ? await this.captureScreenshot(
+          0,
+          undefined,
+          focusedElement?.boundingBox && focusedElement.boundingBox.width > 0 && focusedElement.boundingBox.height > 0
+            ? focusedElement.boundingBox
+            : undefined
+        )
+        : null;
+      const fullScreenshotData = fullCapture?.screenshotData ?? screenshotData;
+      const fullScreenshotPath = clip ? await this.saveScreenshot(fullScreenshotData) : screenshotPath;
 
       // Redact if needed
       let finalScreenshotData = screenshotData;
@@ -920,6 +987,8 @@ export class Recorder {
       // Update step with new screenshot
       step.screenshotPath = screenshotPath;
       step.screenshotDataUrl = this.toScreenshotDataUrl(finalScreenshotData);
+      step.fullScreenshotPath = fullScreenshotPath;
+      step.fullScreenshotDataUrl = this.toScreenshotDataUrl(fullScreenshotData);
       step.redactionRects = capture.redactionRects;
       if (step.redactScreenshot) {
         step.originalScreenshotDataUrl = this.toScreenshotDataUrl(screenshotData);
@@ -1085,6 +1154,18 @@ export class Recorder {
     const screenshotData = capture.screenshotData;
     const screenshotPath = await this.saveScreenshot(screenshotData);
     const screenshotDataUrl = this.toScreenshotDataUrl(screenshotData);
+    const fullCapture = clip
+      ? await this.captureScreenshot(
+        0,
+        undefined,
+        focusedElement?.boundingBox && focusedElement.boundingBox.width > 0 && focusedElement.boundingBox.height > 0
+          ? focusedElement.boundingBox
+          : undefined
+      )
+      : null;
+    const fullScreenshotData = fullCapture?.screenshotData ?? screenshotData;
+    const fullScreenshotPath = clip ? await this.saveScreenshot(fullScreenshotData) : screenshotPath;
+    const fullScreenshotDataUrl = clip ? this.toScreenshotDataUrl(fullScreenshotData) : screenshotDataUrl;
 
     // Check if should redact
     const redactScreenshot = this.shouldRedactPaste(text, fieldName);
@@ -1096,7 +1177,13 @@ export class Recorder {
 
     // Create paste step
     const step: PasteStep = {
-      ...this.createBaseStep(screenshotPath, screenshotDataUrl, clip ?? undefined),
+      ...this.createBaseStep(
+        screenshotPath,
+        screenshotDataUrl,
+        clip ?? undefined,
+        fullScreenshotPath,
+        fullScreenshotDataUrl
+      ),
       action: 'paste',
       target,
       fieldName,

@@ -159,6 +159,7 @@ export function StepCard({ step }: StepCardProps) {
           }
         }}
         screenshotDataUrl={step.screenshotDataUrl}
+        fullScreenshotDataUrl={step.fullScreenshotDataUrl}
         originalScreenshotDataUrl={step.originalScreenshotDataUrl}
         stepNumber={step.index + 1}
         caption={step.caption}

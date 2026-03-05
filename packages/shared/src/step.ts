@@ -25,6 +25,8 @@ export interface BaseStep {
   timestamp: number;
   screenshotPath: string;
   screenshotDataUrl?: string;
+  fullScreenshotPath?: string;
+  fullScreenshotDataUrl?: string;
   caption: string;
   isEdited: boolean;
   screenshotClip?: { x: number; y: number; width: number; height: number };

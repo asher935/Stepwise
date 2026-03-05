@@ -529,11 +529,11 @@ export class ExportService {
     };
 
     const zipBuffer = await new Promise<Buffer>((resolve, reject) => {
-      const chunks: Uint8Array[] = [];
+      const chunks: Buffer[] = [];
       const archive = archiver('zip', { zlib: { level: 9 } });
 
-      archive.on('data', (chunk: Buffer) => chunks.push(new Uint8Array(chunk)));
-      archive.on('end', () => resolve(Buffer.from(Uint8Array.from(chunks.flat()))));
+      archive.on('data', (chunk: Buffer) => chunks.push(chunk));
+      archive.on('end', () => resolve(Buffer.concat(chunks)));
       archive.on('error', reject);
 
       archive.append(JSON.stringify(manifest, null, 2), { name: 'manifest.json' });

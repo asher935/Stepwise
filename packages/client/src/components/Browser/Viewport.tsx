@@ -2,6 +2,7 @@ import { useCallback, useRef } from 'react';
 
 import { DEFAULTS } from '@stepwise/shared';
 
+import { api } from '@/lib/api';
 import { translateClientToBrowser } from '@/lib/coords';
 import { wsClient } from '@/lib/ws';
 import { useSessionStore } from '@/stores/sessionStore';
@@ -22,8 +23,12 @@ function hexToRgba(hex: string, alpha: number): string {
 export function Viewport() {
   const containerRef = useRef<HTMLElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
+  const uploadInputRef = useRef<HTMLInputElement>(null);
+  const pendingUploadCoordsRef = useRef<{ x: number; y: number } | null>(null);
   const currentFrame = useSessionStore((s) => s.currentFrame);
   const isConnected = useSessionStore((s) => s.isConnected);
+  const sessionId = useSessionStore((s) => s.sessionId);
+  const setError = useSessionStore((s) => s.setError);
   const hoveredElement = useSessionStore((s) => s.hoveredElement);
   const stepHighlightColor = useSessionStore((s) => s.stepHighlightColor);
 
@@ -37,6 +42,10 @@ export function Viewport() {
     return translateClientToBrowser(clientX, clientY, rect, BROWSER_DIMENSIONS);
   }, [getViewportRect]);
 
+  const isFileUploadTarget = useCallback(() => {
+    return hoveredElement?.fileUploadTarget === true;
+  }, [hoveredElement]);
+
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     const coords = translateCoords(e.clientX, e.clientY);
     if (coords) {
@@ -47,27 +56,46 @@ export function Viewport() {
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     containerRef.current?.focus();
     const coords = translateCoords(e.clientX, e.clientY);
+    if (isFileUploadTarget()) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (coords) {
+        pendingUploadCoordsRef.current = coords;
+        uploadInputRef.current?.click();
+      }
+      return;
+    }
     if (coords) {
       const button = e.button === 0 ? 'left' : e.button === 2 ? 'right' : 'middle';
       wsClient.sendMouseDown(coords.x, coords.y, button);
     }
-  }, [translateCoords]);
+  }, [isFileUploadTarget, translateCoords]);
 
   const handleMouseUp = useCallback((e: React.MouseEvent) => {
+    if (isFileUploadTarget()) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
     const coords = translateCoords(e.clientX, e.clientY);
     if (coords) {
       const button = e.button === 0 ? 'left' : e.button === 2 ? 'right' : 'middle';
       wsClient.sendMouseUp(coords.x, coords.y, button);
     }
-  }, [translateCoords]);
+  }, [isFileUploadTarget, translateCoords]);
 
   const handleClick = useCallback((e: React.MouseEvent) => {
+    if (isFileUploadTarget()) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
     const coords = translateCoords(e.clientX, e.clientY);
     if (coords) {
       const button = e.button === 0 ? 'left' : e.button === 2 ? 'right' : 'middle';
       wsClient.sendMouseClick(coords.x, coords.y, button);
     }
-  }, [translateCoords]);
+  }, [isFileUploadTarget, translateCoords]);
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -117,6 +145,27 @@ export function Viewport() {
     );
   }, []);
 
+  const handleUploadFileSelected = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = e.target.files?.[0];
+    const coords = pendingUploadCoordsRef.current;
+
+    pendingUploadCoordsRef.current = null;
+
+    if (!selectedFile || !coords || !sessionId) {
+      e.target.value = '';
+      return;
+    }
+
+    try {
+      await api.uploadSiteFile(sessionId, selectedFile, coords.x, coords.y);
+      setError(null);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Failed to upload file');
+    } finally {
+      e.target.value = '';
+    }
+  }, [sessionId, setError]);
+
   if (!isConnected || !currentFrame) {
     return (
       <div className="flex-1 flex flex-col p-8 overflow-hidden">
@@ -159,6 +208,14 @@ export function Viewport() {
           onKeyUp={handleKeyUp}
           aria-label="Browser Viewport"
         >
+          <input
+            ref={uploadInputRef}
+            type="file"
+            className="hidden"
+            onChange={(e) => { void handleUploadFileSelected(e); }}
+            tabIndex={-1}
+            aria-hidden
+          />
           <div className="h-full flex items-center justify-center p-8">
             <div className="relative">
               <img

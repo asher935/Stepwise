@@ -97,6 +97,8 @@ export type ClientMessage =
 /** Element information for hover highlighting */
 export interface ElementInfo {
   tagName: string;
+  inputType?: string;
+  fileUploadTarget?: boolean;
   id?: string;
   className?: string;
   boundingBox: { x: number; y: number; width: number; height: number };

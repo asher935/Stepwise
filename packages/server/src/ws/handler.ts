@@ -255,6 +255,15 @@ export function getSessionRecorder(sessionId: string): Recorder | null {
   return null;
 }
 
+export function getSessionBridge(sessionId: string): CDPBridge | null {
+  for (const [ws, state] of connections) {
+    if (ws.data.sessionId === sessionId && state.bridge) {
+      return state.bridge;
+    }
+  }
+  return null;
+}
+
 /**
  * Checks rate limit for a connection
  */
@@ -633,6 +642,8 @@ async function handleMouseInput(
           type: 'element:hover',
           element: element ? {
             tagName: element.tagName,
+            inputType: element.inputType,
+            fileUploadTarget: element.fileUploadTarget,
             id: element.id,
             className: element.className,
             boundingBox: element.boundingBox,

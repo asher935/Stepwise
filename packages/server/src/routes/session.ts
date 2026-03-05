@@ -2,7 +2,9 @@ import { Elysia, t } from 'elysia';
 import type { Step, StepLegendItem } from '@stepwise/shared';
 import { sessionManager } from '../services/SessionManager.js';
 import { ERROR_CODES } from '@stepwise/shared';
-import { getSessionRecorder, notifyStepDeleted } from '../ws/handler.js';
+import { getSessionBridge, getSessionRecorder, notifyStepDeleted } from '../ws/handler.js';
+
+const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
 function normalizeSessionSteps(session: { steps: unknown }): Step[] {
   const rawSteps = Array.isArray(session.steps) ? session.steps : [];
@@ -62,6 +64,19 @@ function isLegendItem(value: unknown): value is StepLegendItem {
   if (typeof box.x !== 'number' || typeof box.y !== 'number' || typeof box.width !== 'number' || typeof box.height !== 'number') return false;
   if (item.semanticKey !== undefined && item.semanticKey !== 'username' && item.semanticKey !== 'password') return false;
   return true;
+}
+
+function parseFormNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  return null;
 }
 
 export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
@@ -194,6 +209,120 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
     {
       params: t.Object({
         sessionId: t.String(),
+      }),
+    }
+  )
+
+  .post(
+    '/:sessionId/upload',
+    async ({ params, headers, body }) => {
+      const token = headers['authorization']?.replace('Bearer ', '');
+
+      if (!token || !sessionManager.validateToken(params.sessionId, token)) {
+        return {
+          success: false,
+          error: {
+            code: ERROR_CODES.INVALID_TOKEN,
+            message: 'Invalid or missing token',
+          },
+        };
+      }
+
+      const session = sessionManager.getSession(params.sessionId);
+      if (!session || session.status !== 'active') {
+        return {
+          success: false,
+          error: {
+            code: ERROR_CODES.SESSION_NOT_FOUND,
+            message: 'Session not found or not active',
+          },
+        };
+      }
+
+      const bridge = getSessionBridge(params.sessionId);
+      if (!bridge) {
+        return {
+          success: false,
+          error: {
+            code: 'FILE_UPLOAD_FAILED',
+            message: 'No active browser connection for this session',
+          },
+        };
+      }
+
+      const x = parseFormNumber(body.x);
+      const y = parseFormNumber(body.y);
+      if (x === null || y === null) {
+        return {
+          success: false,
+          error: {
+            code: 'FILE_UPLOAD_FAILED',
+            message: 'Invalid upload coordinates',
+          },
+        };
+      }
+
+      const file = body.file;
+      if (!file) {
+        return {
+          success: false,
+          error: {
+            code: 'FILE_UPLOAD_FAILED',
+            message: 'No file provided',
+          },
+        };
+      }
+
+      if (file.size > MAX_UPLOAD_BYTES) {
+        return {
+          success: false,
+          error: {
+            code: 'FILE_UPLOAD_FAILED',
+            message: `File exceeds max upload size of ${MAX_UPLOAD_BYTES} bytes`,
+          },
+        };
+      }
+
+      try {
+        const fileBuffer = Buffer.from(await file.arrayBuffer());
+        await bridge.uploadFileAtPoint(x, y, {
+          name: file.name,
+          mimeType: file.type || 'application/octet-stream',
+          buffer: fileBuffer,
+        });
+
+        const recorder = getSessionRecorder(params.sessionId);
+        if (recorder) {
+          await recorder.recordClick(x, y, 'left');
+        }
+
+        sessionManager.updateActivity(params.sessionId);
+
+        return {
+          success: true,
+          data: {
+            fileName: file.name,
+            size: file.size,
+          },
+        };
+      } catch (error) {
+        return {
+          success: false,
+          error: {
+            code: 'FILE_UPLOAD_FAILED',
+            message: error instanceof Error ? error.message : 'File upload failed',
+          },
+        };
+      }
+    },
+    {
+      params: t.Object({
+        sessionId: t.String(),
+      }),
+      body: t.Object({
+        file: t.File(),
+        x: t.Union([t.String(), t.Number()]),
+        y: t.Union([t.String(), t.Number()]),
       }),
     }
   )

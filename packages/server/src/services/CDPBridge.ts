@@ -128,6 +128,12 @@ interface CDPBridgeOptions {
   onError?: ErrorHandler;
 }
 
+interface UploadFile {
+  name: string;
+  mimeType: string;
+  buffer: Buffer;
+}
+
 function createCDPError(code: string, message: string, context?: Record<string, unknown>, originalError?: Error): CDPError {
   return {
     code,
@@ -527,6 +533,8 @@ export class CDPBridge {
 
   async getElementAtPoint(x: number, y: number): Promise<{
     tagName: string;
+    inputType?: string;
+    fileUploadTarget?: boolean;
     id?: string;
     className?: string;
     testId?: string;
@@ -544,6 +552,85 @@ export class CDPBridge {
         if (!element) return null;
 
         const target = element.closest('button, a, input, select, textarea, label, [role="button"], [role="link"]') ?? element;
+        const resolveUploadInput = (el: Element): HTMLInputElement | null => {
+          const isHeuristicCandidate = (node: Element): boolean => {
+            if (node instanceof HTMLInputElement) {
+              return node.type === 'file';
+            }
+            if (node instanceof HTMLTextAreaElement || node instanceof HTMLSelectElement) {
+              return false;
+            }
+
+            const htmlElement = node as HTMLElement;
+            if (htmlElement.isContentEditable) {
+              return false;
+            }
+            if (node instanceof HTMLButtonElement || node instanceof HTMLAnchorElement) {
+              return false;
+            }
+
+            const role = node.getAttribute('role');
+            if (role === 'button' || role === 'link') {
+              return false;
+            }
+
+            return window.getComputedStyle(htmlElement).cursor === 'pointer';
+          };
+
+          const directInput = el.closest('input[type="file"]');
+          if (directInput instanceof HTMLInputElement) {
+            return directInput;
+          }
+
+          const label = el.closest('label');
+          if (label instanceof HTMLLabelElement) {
+            if (label.control instanceof HTMLInputElement && label.control.type === 'file') {
+              return label.control;
+            }
+
+            const nestedLabelInput = label.querySelector('input[type="file"]');
+            if (nestedLabelInput instanceof HTMLInputElement) {
+              return nestedLabelInput;
+            }
+          }
+
+          const nestedInput = el.querySelector('input[type="file"]');
+          if (nestedInput instanceof HTMLInputElement) {
+            return nestedInput;
+          }
+
+          if (!isHeuristicCandidate(el)) {
+            return null;
+          }
+
+          let scope: Element | null = el;
+          for (let depth = 0; depth < 4 && scope; depth += 1) {
+            const parentElement: Element | null = scope.parentElement;
+            if (!parentElement) {
+              break;
+            }
+
+            const directSiblingInputs = Array.from(parentElement.querySelectorAll(':scope > input[type="file"]'));
+            if (directSiblingInputs.length === 1 && directSiblingInputs[0] instanceof HTMLInputElement) {
+              return directSiblingInputs[0];
+            }
+            if (directSiblingInputs.length > 1) {
+              return null;
+            }
+
+            const subtreeInputs = Array.from(parentElement.querySelectorAll('input[type="file"]'));
+            if (subtreeInputs.length === 1 && subtreeInputs[0] instanceof HTMLInputElement) {
+              return subtreeInputs[0];
+            }
+            if (subtreeInputs.length > 1) {
+              return null;
+            }
+
+            scope = parentElement;
+          }
+
+          return null;
+        };
 
         const getLabelText = (el: Element): string | undefined => {
           const ariaLabel = el.getAttribute('aria-label');
@@ -596,9 +683,12 @@ export class CDPBridge {
             : target.tagName;
         const rect = target.getBoundingClientRect();
         const labelText = getLabelText(target);
+        const fileUploadInput = resolveUploadInput(target);
 
         return {
           tagName,
+          inputType: target instanceof HTMLInputElement ? target.type : fileUploadInput?.type,
+          fileUploadTarget: fileUploadInput !== null,
           id: (target as HTMLElement).id || undefined,
           className: (target as HTMLElement).className || undefined,
           testId: target.getAttribute('data-testid') ?? undefined,
@@ -619,6 +709,119 @@ export class CDPBridge {
       'getElementAtPoint',
       { x, y }
     ) ?? null;
+  }
+
+  async uploadFileAtPoint(x: number, y: number, file: UploadFile): Promise<void> {
+    const handle = await this.executeWithHealthCheck(
+      () => this.page.evaluateHandle(([px, py]) => {
+        const element = document.elementFromPoint(px, py);
+        if (!element) return null;
+
+        const resolveUploadInput = (el: Element): HTMLInputElement | null => {
+          const isHeuristicCandidate = (node: Element): boolean => {
+            if (node instanceof HTMLInputElement) {
+              return node.type === 'file';
+            }
+            if (node instanceof HTMLTextAreaElement || node instanceof HTMLSelectElement) {
+              return false;
+            }
+
+            const htmlElement = node as HTMLElement;
+            if (htmlElement.isContentEditable) {
+              return false;
+            }
+            if (node instanceof HTMLButtonElement || node instanceof HTMLAnchorElement) {
+              return false;
+            }
+
+            const role = node.getAttribute('role');
+            if (role === 'button' || role === 'link') {
+              return false;
+            }
+
+            return window.getComputedStyle(htmlElement).cursor === 'pointer';
+          };
+
+          const directInput = el.closest('input[type="file"]');
+          if (directInput instanceof HTMLInputElement) {
+            return directInput;
+          }
+
+          const label = el.closest('label');
+          if (label instanceof HTMLLabelElement) {
+            if (label.control instanceof HTMLInputElement && label.control.type === 'file') {
+              return label.control;
+            }
+
+            const nestedLabelInput = label.querySelector('input[type="file"]');
+            if (nestedLabelInput instanceof HTMLInputElement) {
+              return nestedLabelInput;
+            }
+          }
+
+          const nestedInput = el.querySelector('input[type="file"]');
+          if (nestedInput instanceof HTMLInputElement) {
+            return nestedInput;
+          }
+
+          if (!isHeuristicCandidate(el)) {
+            return null;
+          }
+
+          let scope: Element | null = el;
+          for (let depth = 0; depth < 4 && scope; depth += 1) {
+            const parentElement: Element | null = scope.parentElement;
+            if (!parentElement) {
+              break;
+            }
+
+            const directSiblingInputs = Array.from(parentElement.querySelectorAll(':scope > input[type="file"]'));
+            if (directSiblingInputs.length === 1 && directSiblingInputs[0] instanceof HTMLInputElement) {
+              return directSiblingInputs[0];
+            }
+            if (directSiblingInputs.length > 1) {
+              return null;
+            }
+
+            const subtreeInputs = Array.from(parentElement.querySelectorAll('input[type="file"]'));
+            if (subtreeInputs.length === 1 && subtreeInputs[0] instanceof HTMLInputElement) {
+              return subtreeInputs[0];
+            }
+            if (subtreeInputs.length > 1) {
+              return null;
+            }
+
+            scope = parentElement;
+          }
+
+          return null;
+        };
+
+        return resolveUploadInput(element);
+      }, [x, y] as const),
+      'resolveFileInput',
+      { x, y }
+    );
+
+    if (handle === null) {
+      throw new Error('Failed to resolve file upload target');
+    }
+
+    const element = handle.asElement();
+    if (!element) {
+      await handle.dispose();
+      throw new Error('No file input found at selected location');
+    }
+
+    try {
+      await element.setInputFiles({
+        name: file.name,
+        mimeType: file.mimeType,
+        buffer: file.buffer,
+      });
+    } finally {
+      await handle.dispose();
+    }
   }
 
   async takeScreenshot(clip?: { x: number; y: number; width: number; height: number }): Promise<Buffer> {

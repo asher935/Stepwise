@@ -123,6 +123,37 @@ class ApiClient {
     });
   }
 
+  async uploadSiteFile(
+    sessionId: string,
+    file: File,
+    x: number,
+    y: number
+  ): Promise<{ fileName: string; size: number }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('x', String(x));
+    formData.append('y', String(y));
+
+    const headers: Record<string, string> = {};
+    if (this.token) {
+      headers['Authorization'] = `Bearer ${this.token}`;
+    }
+
+    const response = await fetch(`${API_BASE}/sessions/${sessionId}/upload`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+
+    const result = await response.json() as ApiResponse<{ fileName: string; size: number }>;
+
+    if (!result.success || !result.data) {
+      throw new Error(result.error?.message ?? 'File upload failed');
+    }
+
+    return result.data;
+  }
+
   async exportSession(
     sessionId: string,
     options: {

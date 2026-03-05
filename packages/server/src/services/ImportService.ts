@@ -112,11 +112,11 @@ export class ImportService {
           const type = entry.type;
 
           if (type === 'File') {
-            const chunks: Uint8Array[] = [];
+            const chunks: Buffer[] = [];
 
-            entry.on('data', (chunk: Buffer) => chunks.push(new Uint8Array(chunk)));
+            entry.on('data', (chunk: Buffer) => chunks.push(chunk));
             entry.on('end', () => {
-              const content = Buffer.from(Uint8Array.from(chunks.flat()));
+              const content = Buffer.concat(chunks);
 
               if (path === 'manifest.json') {
                 try {

@@ -96,7 +96,7 @@ export function Toolbar() {
             setIsUrlInputDirty(true);
           }}
           onKeyDown={handleKeyDown}
-          className="w-full bg-white border border-black/5 rounded-full py-2.5 pl-10 pr-4 text-xs font-bold text-[#6B5E55] focus:border-[#E67E22]/40 outline-none transition-all shadow-sm group-hover:shadow-md"
+          className="w-full bg-white border border-black/5 rounded-full py-2.5 pl-10 pr-4 text-xs font-bold text-[#6B5E55] outline-none focus:outline-2 focus:outline-[#E67E22]/40 focus:outline-offset-2 transition-all shadow-sm group-hover:shadow-md"
           disabled={!isConnected}
           placeholder="Enter URL..."
         />

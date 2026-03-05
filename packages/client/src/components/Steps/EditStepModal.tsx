@@ -219,7 +219,7 @@ export function EditStepModal({ open, onOpenChange, screenshotDataUrl, originalS
                   onChange={(e) => setEditedCaption(e.target.value)}
                   onKeyDown={handleKeyDown}
                   placeholder="Enter a description for this step..."
-                  className="w-full bg-[#FDF2E9] border border-black/5 rounded-[24px] py-4 px-6 text-sm font-bold text-[#2D241E] resize-none outline-none ring-2 ring-[#E67E22]/20 focus:ring-[#E67E22]/40 transition-all min-h-[80px]"
+                  className="w-full bg-[#FDF2E9] border border-black/5 rounded-[24px] py-4 px-6 text-sm font-bold text-[#2D241E] resize-none outline-none focus:outline-2 focus:outline-[#E67E22]/40 focus:outline-offset-2 transition-all min-h-[80px]"
                   rows={3}
                 />
                 <div className="absolute bottom-3 right-3 flex items-center space-x-2">

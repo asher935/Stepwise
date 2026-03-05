@@ -119,7 +119,7 @@ export function ExportModal({ open, onOpenChange, guideTitle, setGuideTitle }: E
                 value={guideTitle}
                 onChange={(e) => setGuideTitle(e.target.value)}
                 placeholder="Enter guide title..."
-                className="w-full bg-[#FDF2E9] border border-black/5 rounded-[24px] py-4 px-6 text-sm font-bold text-[#2D241E] focus:ring-2 ring-[#E67E22]/20 outline-none transition-all"
+                className="w-full bg-[#FDF2E9] border border-black/5 rounded-[24px] py-4 px-6 text-sm font-bold text-[#2D241E] outline-none focus:outline-2 focus:outline-[#E67E22]/40 focus:outline-offset-2 transition-all"
               />
             </div>
 
@@ -148,7 +148,7 @@ export function ExportModal({ open, onOpenChange, guideTitle, setGuideTitle }: E
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="Set decryption password..."
-                    className="w-full bg-[#FDF2E9] border border-black/5 rounded-[24px] py-4 pl-6 pr-14 text-sm font-bold text-[#2D241E] focus:ring-2 ring-[#E67E22]/20 outline-none transition-all"
+                    className="w-full bg-[#FDF2E9] border border-black/5 rounded-[24px] py-4 pl-6 pr-14 text-sm font-bold text-[#2D241E] outline-none focus:outline-2 focus:outline-[#E67E22]/40 focus:outline-offset-2 transition-all"
                   />
                   <button
                     onClick={() => setShowPassword(!showPassword)}

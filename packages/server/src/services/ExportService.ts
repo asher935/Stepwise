@@ -27,14 +27,36 @@ export class ExportService {
     this.session = session;
   }
 
-  /**
-   * Gets the appropriate screenshot path (redacted or original)
-   */
+  private getSelectedScreenshotMode(step: Step): 'zoomed' | 'viewport' | 'fullPage' {
+    if (step.selectedScreenshotMode === 'viewport' || step.selectedScreenshotMode === 'fullPage') {
+      return step.selectedScreenshotMode;
+    }
+    return 'zoomed';
+  }
+
   private getScreenshotPath(step: Step): string {
+    const mode = this.getSelectedScreenshotMode(step);
+    if (mode === 'fullPage') {
+      return step.pageScreenshotPath || step.fullScreenshotPath || step.screenshotPath;
+    }
+    if (mode === 'viewport') {
+      return step.fullScreenshotPath || step.screenshotPath;
+    }
     if (step.redactScreenshot) {
       return step.redactedScreenshotPath || step.screenshotPath;
     }
     return step.screenshotPath;
+  }
+
+  private getScreenshotDataUrl(step: Step): string | undefined {
+    const mode = this.getSelectedScreenshotMode(step);
+    if (mode === 'fullPage') {
+      return step.pageScreenshotDataUrl || step.fullScreenshotDataUrl || step.screenshotDataUrl;
+    }
+    if (mode === 'viewport') {
+      return step.fullScreenshotDataUrl || step.screenshotDataUrl;
+    }
+    return step.screenshotDataUrl;
   }
 
   private decodeDataUrl(dataUrl: string | undefined): Buffer | null {
@@ -64,7 +86,7 @@ export class ExportService {
       }
     }
 
-    return this.decodeDataUrl(step.screenshotDataUrl);
+    return this.decodeDataUrl(this.getScreenshotDataUrl(step));
   }
 
   private clamp(value: number, min: number, max: number): number {
@@ -74,15 +96,15 @@ export class ExportService {
   private buildLegendOverlaySvg(
     width: number,
     height: number,
-    step: Step
+    legendItems: NonNullable<Step['legendItems']>,
+    stepHighlightColor?: string
   ): string | null {
-    const legendItems = step.legendItems ?? [];
     if (legendItems.length === 0) {
       return null;
     }
 
-    const highlightColor = /^#[0-9a-fA-F]{6}$/.test(step.highlightColor ?? '')
-      ? (step.highlightColor as string)
+    const highlightColor = /^#[0-9a-fA-F]{6}$/.test(stepHighlightColor ?? '')
+      ? (stepHighlightColor as string)
       : EXPORT_HIGHLIGHT_COLOR;
 
     const rects = legendItems.map((item) => {
@@ -112,7 +134,11 @@ export class ExportService {
       return null;
     }
 
-    if (!step.legendItems || step.legendItems.length === 0) {
+    const legendItems = this.getSelectedScreenshotMode(step) === 'fullPage'
+      ? (step.pageLegendItems ?? step.legendItems ?? [])
+      : (step.legendItems ?? []);
+
+    if (legendItems.length === 0) {
       return screenshotBuffer;
     }
 
@@ -125,7 +151,7 @@ export class ExportService {
         return screenshotBuffer;
       }
 
-      const overlaySvg = this.buildLegendOverlaySvg(width, height, step);
+      const overlaySvg = this.buildLegendOverlaySvg(width, height, legendItems, step.highlightColor);
       if (!overlaySvg) {
         return screenshotBuffer;
       }
@@ -579,6 +605,7 @@ export class ExportService {
     let stepsHtml = '';
     for (const step of steps) {
       let imgSrc = '';
+      const mode = this.getSelectedScreenshotMode(step);
       if (options.includeScreenshots !== false) {
         const imageBuffer = await this.getExportScreenshotBuffer(step);
         if (useExternalImages) {
@@ -589,7 +616,7 @@ export class ExportService {
       }
 
       stepsHtml += `
-        <div class="step">
+        <div class="step step-mode-${mode}">
           <div class="step-header">
             <span class="step-number">${step.index + 1}</span>
             <span class="step-caption">${this.escapeHtml(step.caption || this.getDefaultCaption(step))}</span>
@@ -674,7 +701,31 @@ export class ExportService {
         display: block;
       }
       @media print {
-        .step { page-break-inside: avoid; }
+        .step {
+          page-break-inside: auto;
+          break-inside: auto;
+          overflow: visible;
+        }
+        .step.step-mode-zoomed,
+        .step.step-mode-viewport {
+          page-break-inside: avoid;
+          break-inside: avoid;
+        }
+        .step.step-mode-fullPage {
+          page-break-inside: avoid;
+          break-inside: avoid;
+        }
+        .step.step-mode-fullPage .step-image {
+          display: block;
+          width: auto;
+          max-width: 100%;
+          max-height: 60vh;
+          height: auto;
+          margin: 0 auto;
+          object-fit: contain;
+          object-position: top center;
+          background: #fff;
+        }
       }
     `;
   }

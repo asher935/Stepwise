@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { X, Download, Check, Edit3, Image as ImageIcon, Eye, EyeOff } from 'lucide-react';
 import { createPortal } from 'react-dom';
-import type { StepLegendItem } from '@stepwise/shared';
+import type { ScreenshotMode, StepLegendItem } from '@stepwise/shared';
 import { StepLegendOverlay } from './StepLegendOverlay';
 import { useSessionStore } from '@/stores/sessionStore';
 
@@ -18,6 +18,8 @@ interface EditStepModalProps {
   legendItems?: StepLegendItem[];
   pageLegendItems?: StepLegendItem[];
   onSaveLegendItems?: (legendItems: StepLegendItem[], caption: string, pageLegendItems: StepLegendItem[]) => Promise<void>;
+  selectedScreenshotMode?: ScreenshotMode;
+  onSaveScreenshotMode?: (mode: ScreenshotMode) => Promise<void>;
   onToggleRedaction?: (redact: boolean) => Promise<string | undefined>;
   canToggleRedaction?: boolean;
   isRedacted?: boolean;
@@ -50,7 +52,7 @@ function getLegendItemKey(item: StepLegendItem): string {
   ].join(':');
 }
 
-export function EditStepModal({ open, onOpenChange, screenshotDataUrl, fullScreenshotDataUrl, pageScreenshotDataUrl, originalScreenshotDataUrl, stepNumber, caption, onSaveCaption, legendItems, pageLegendItems, onSaveLegendItems, onToggleRedaction, canToggleRedaction, isRedacted }: EditStepModalProps) {
+export function EditStepModal({ open, onOpenChange, screenshotDataUrl, fullScreenshotDataUrl, pageScreenshotDataUrl, originalScreenshotDataUrl, stepNumber, caption, onSaveCaption, legendItems, pageLegendItems, onSaveLegendItems, selectedScreenshotMode, onSaveScreenshotMode, onToggleRedaction, canToggleRedaction, isRedacted }: EditStepModalProps) {
   const stepHighlightColor = useSessionStore((s) => s.stepHighlightColor);
   const [editedCaption, setEditedCaption] = useState(caption);
   const [isSaving, setIsSaving] = useState(false);
@@ -64,7 +66,7 @@ export function EditStepModal({ open, onOpenChange, screenshotDataUrl, fullScree
   const [imageNaturalSize, setImageNaturalSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
   const [isUpdatingLegend, setIsUpdatingLegend] = useState(false);
   const [hoveredLegendBubbleNumber, setHoveredLegendBubbleNumber] = useState<number | null>(null);
-  const [screenshotMode, setScreenshotMode] = useState<'zoomed' | 'viewport' | 'fullPage'>('zoomed');
+  const [screenshotMode, setScreenshotMode] = useState<ScreenshotMode>(selectedScreenshotMode ?? 'zoomed');
   const wasOpenRef = useRef(false);
   const isFullPageMode = screenshotMode === 'fullPage';
   const displayedLegendItems = isFullPageMode ? editablePageLegendItems : editableLegendItems;
@@ -102,10 +104,10 @@ export function EditStepModal({ open, onOpenChange, screenshotDataUrl, fullScree
       setEditableLegendItems(legendItems ?? []);
       setEditablePageLegendItems(pageLegendItems ?? legendItems ?? []);
       setHoveredLegendBubbleNumber(null);
-      setScreenshotMode('zoomed');
+      setScreenshotMode(selectedScreenshotMode ?? 'zoomed');
     }
     wasOpenRef.current = open;
-  }, [open, caption, legendItems, pageLegendItems]);
+  }, [open, caption, legendItems, pageLegendItems, selectedScreenshotMode]);
 
   useEffect(() => {
     if (!isEditing) {
@@ -171,6 +173,14 @@ export function EditStepModal({ open, onOpenChange, screenshotDataUrl, fullScree
       setIsTogglingRedaction(false);
     }
   }, [onToggleRedaction, redactEnabled]);
+
+  const handleScreenshotModeChange = useCallback((mode: ScreenshotMode) => {
+    setScreenshotMode(mode);
+    if (!onSaveScreenshotMode) {
+      return;
+    }
+    void onSaveScreenshotMode(mode);
+  }, [onSaveScreenshotMode]);
 
   const handleRemoveLegendItem = useCallback(async (bubbleNumber: number) => {
     if (!onSaveLegendItems) {
@@ -374,14 +384,14 @@ export function EditStepModal({ open, onOpenChange, screenshotDataUrl, fullScree
               <div className="bg-[#FDF2E9] border border-black/5 rounded-[24px] p-2 inline-flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setScreenshotMode('zoomed')}
+                  onClick={() => handleScreenshotModeChange('zoomed')}
                   className={`px-4 py-2 rounded-full text-xs font-black uppercase tracking-wider transition-colors ${screenshotMode === 'zoomed' ? 'bg-[#E67E22] text-white' : 'bg-white text-[#2D241E] hover:bg-[#F5EBE0]'}`}
                 >
                   Zoomed
                 </button>
                 <button
                   type="button"
-                  onClick={() => setScreenshotMode('viewport')}
+                  onClick={() => handleScreenshotModeChange('viewport')}
                   disabled={!fullScreenshotDataUrl}
                   className={`px-4 py-2 rounded-full text-xs font-black uppercase tracking-wider transition-colors ${screenshotMode === 'viewport' ? 'bg-[#E67E22] text-white' : 'bg-white text-[#2D241E] hover:bg-[#F5EBE0]'} disabled:opacity-40 disabled:cursor-not-allowed`}
                 >
@@ -389,7 +399,7 @@ export function EditStepModal({ open, onOpenChange, screenshotDataUrl, fullScree
                 </button>
                 <button
                   type="button"
-                  onClick={() => setScreenshotMode('fullPage')}
+                  onClick={() => handleScreenshotModeChange('fullPage')}
                   disabled={!pageScreenshotDataUrl}
                   className={`px-4 py-2 rounded-full text-xs font-black uppercase tracking-wider transition-colors ${screenshotMode === 'fullPage' ? 'bg-[#E67E22] text-white' : 'bg-white text-[#2D241E] hover:bg-[#F5EBE0]'} disabled:opacity-40 disabled:cursor-not-allowed`}
                 >

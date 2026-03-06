@@ -536,6 +536,14 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
         (updatedStep as Step & { pageLegendItems?: StepLegendItem[] }).pageLegendItems = pageLegendItems;
       }
 
+      if (
+        body.selectedScreenshotMode === 'zoomed'
+        || body.selectedScreenshotMode === 'viewport'
+        || body.selectedScreenshotMode === 'fullPage'
+      ) {
+        (updatedStep as Step & { selectedScreenshotMode?: 'zoomed' | 'viewport' | 'fullPage' }).selectedScreenshotMode = body.selectedScreenshotMode;
+      }
+
       steps[stepIndex] = updatedStep;
 
       return { success: true, data: updatedStep };
@@ -551,6 +559,11 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
         redactedScreenshotPath: t.Optional(t.String()),
         legendItems: t.Optional(t.Array(t.Unknown())),
         pageLegendItems: t.Optional(t.Array(t.Unknown())),
+        selectedScreenshotMode: t.Optional(t.Union([
+          t.Literal('zoomed'),
+          t.Literal('viewport'),
+          t.Literal('fullPage'),
+        ])),
       }),
     }
   )

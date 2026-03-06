@@ -19,6 +19,8 @@ export interface StepLegendItem {
   boundingBox: { x: number; y: number; width: number; height: number };
 }
 
+export type ScreenshotMode = 'zoomed' | 'viewport' | 'fullPage';
+
 /** Base step interface */
 export interface BaseStep {
   id: string;
@@ -30,6 +32,7 @@ export interface BaseStep {
   fullScreenshotDataUrl?: string;
   pageScreenshotPath?: string;
   pageScreenshotDataUrl?: string;
+  selectedScreenshotMode?: ScreenshotMode;
   caption: string;
   isEdited: boolean;
   screenshotClip?: { x: number; y: number; width: number; height: number };
@@ -118,4 +121,6 @@ export interface UpdateStepRequest {
   redactScreenshot?: boolean;
   redactedScreenshotPath?: string;
   legendItems?: StepLegendItem[];
+  pageLegendItems?: StepLegendItem[];
+  selectedScreenshotMode?: ScreenshotMode;
 }

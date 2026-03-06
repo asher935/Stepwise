@@ -1,4 +1,4 @@
-import type { SessionState, Step, ElementInfo, StepLegendItem } from '@stepwise/shared';
+import type { SessionState, Step, ElementInfo, ScreenshotMode, StepLegendItem } from '@stepwise/shared';
 import { create } from 'zustand';
 import { api } from '../lib/api';
 import { wsClient } from '../lib/ws';
@@ -50,6 +50,7 @@ interface SessionStore {
     redactedScreenshotPath?: string;
     legendItems?: StepLegendItem[];
     pageLegendItems?: StepLegendItem[];
+    selectedScreenshotMode?: ScreenshotMode;
   }) => Promise<void>;
   toggleRedaction: (stepId: string, redact: boolean) => Promise<string | undefined>;
   deleteStep: (stepId: string) => Promise<void>;
@@ -143,6 +144,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     redactedScreenshotPath?: string;
     legendItems?: StepLegendItem[];
     pageLegendItems?: StepLegendItem[];
+    selectedScreenshotMode?: ScreenshotMode;
   }) => {
     const { sessionId, steps, localStepIds } = get();
     if (!sessionId) return;

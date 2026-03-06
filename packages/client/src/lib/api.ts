@@ -2,6 +2,7 @@ import type {
   ExportFormat, 
   ExportResult,
   ImportResult,
+  ScreenshotMode,
   SessionState, 
   Step, 
   StepLegendItem,
@@ -100,6 +101,7 @@ class ApiClient {
       redactedScreenshotPath?: string;
       legendItems?: StepLegendItem[];
       pageLegendItems?: StepLegendItem[];
+      selectedScreenshotMode?: ScreenshotMode;
     }
   ): Promise<Step> {
     return this.request('PATCH', `/sessions/${sessionId}/steps/${stepId}`, updates);

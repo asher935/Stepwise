@@ -172,6 +172,10 @@ export function StepCard({ step }: StepCardProps) {
         onSaveLegendItems={async (legendItems, nextCaption, pageLegendItems) => {
           await updateStep(step.id, { legendItems, pageLegendItems, caption: nextCaption });
         }}
+        selectedScreenshotMode={step.selectedScreenshotMode}
+        onSaveScreenshotMode={async (mode) => {
+          await updateStep(step.id, { selectedScreenshotMode: mode });
+        }}
         onToggleRedaction={async (redact: boolean) => {
           return await toggleRedaction(step.id, redact);
         }}

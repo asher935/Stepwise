@@ -119,6 +119,7 @@ export type ServerMessageType =
   | 'rate:limited'
   | 'session:unhealthy'
   | 'element:hover'
+  | 'upload:requested'
   | 'replay:status'
   | 'replay:step:start'
   | 'replay:step:complete'
@@ -206,6 +207,12 @@ export interface ElementHoverMessage {
   element: ElementInfo | null;
 }
 
+export interface UploadRequestedMessage {
+  type: 'upload:requested';
+  x: number;
+  y: number;
+}
+
 /** Replay status message */
 export interface ReplayStatusMessage {
   type: 'replay:status';
@@ -248,6 +255,7 @@ export type ServerMessage =
   | RateLimitedMessage
   | SessionUnhealthyMessage
   | ElementHoverMessage
+  | UploadRequestedMessage
   | ReplayStatusMessage
   | ReplayStepStartMessage
   | ReplayStepCompleteMessage

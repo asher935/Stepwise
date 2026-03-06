@@ -1,4 +1,4 @@
-import type { Page, CDPSession } from 'playwright-core';
+import type { Page, CDPSession, FileChooser } from 'playwright-core';
 import type { ServerSession } from '../types/session.js';
 import { env } from '../lib/env.js';
 import { sessionManager } from './SessionManager.js';
@@ -6,6 +6,7 @@ import { sessionManager } from './SessionManager.js';
 type FrameHandler = (data: string, timestamp: number) => void;
 type NavigationHandler = (url: string, title: string) => void;
 type ErrorHandler = (error: CDPError) => void;
+type FileChooserHandler = (x: number, y: number) => void;
 
 type ResolvedKeyInfo = {
   code?: string;
@@ -126,6 +127,7 @@ interface CDPBridgeOptions {
   onFrame: FrameHandler;
   onNavigation: NavigationHandler;
   onError?: ErrorHandler;
+  onFileChooser?: FileChooserHandler;
 }
 
 interface UploadFile {
@@ -177,6 +179,7 @@ export class CDPBridge {
   private onFrame: FrameHandler;
   private onNavigation: NavigationHandler;
   private onError?: ErrorHandler;
+  private onFileChooser?: FileChooserHandler;
   private isScreencasting: boolean = false;
   private lastFrameTime: number = 0;
   private minFrameInterval: number;
@@ -186,12 +189,24 @@ export class CDPBridge {
   private healthCheckTimer: ReturnType<typeof setInterval> | null = null;
   private pressedButtons: number = 0;
   private highlightColor: string = '#FF0000';
+  private pendingFileChooser: {
+    chooser: FileChooser;
+    x: number;
+    y: number;
+    createdAt: number;
+  } | null = null;
+  private lastFileChooserTrigger: {
+    x: number;
+    y: number;
+    createdAt: number;
+  } | null = null;
 
   constructor(options: CDPBridgeOptions) {
     this.session = options.session;
     this.onFrame = options.onFrame;
     this.onNavigation = options.onNavigation;
     this.onError = options.onError;
+    this.onFileChooser = options.onFileChooser;
     this.minFrameInterval = 1000 / env.SCREENCAST_MAX_FPS;
     this.startHealthMonitoring();
   }
@@ -248,6 +263,77 @@ export class CDPBridge {
     return this.session.page;
   }
 
+  private setLastFileChooserTrigger(x: number, y: number): void {
+    this.lastFileChooserTrigger = {
+      x,
+      y,
+      createdAt: Date.now(),
+    };
+  }
+
+  private consumeLastFileChooserTrigger(): { x: number; y: number } | null {
+    if (!this.lastFileChooserTrigger) {
+      return null;
+    }
+
+    const maxAgeMs = 5000;
+    if (Date.now() - this.lastFileChooserTrigger.createdAt > maxAgeMs) {
+      this.lastFileChooserTrigger = null;
+      return null;
+    }
+
+    const trigger = this.lastFileChooserTrigger;
+    this.lastFileChooserTrigger = null;
+    return trigger;
+  }
+
+  private setPendingFileChooser(chooser: FileChooser, x: number, y: number): void {
+    this.pendingFileChooser = {
+      chooser,
+      x,
+      y,
+      createdAt: Date.now(),
+    };
+  }
+
+  private takePendingFileChooser(x: number, y: number): FileChooser | null {
+    if (!this.pendingFileChooser) {
+      return null;
+    }
+
+    const maxAgeMs = 60000;
+    const maxDistancePx = 24;
+    const ageMs = Date.now() - this.pendingFileChooser.createdAt;
+    const distance = Math.hypot(this.pendingFileChooser.x - x, this.pendingFileChooser.y - y);
+
+    if (ageMs > maxAgeMs || distance > maxDistancePx) {
+      this.pendingFileChooser = null;
+      return null;
+    }
+
+    const { chooser } = this.pendingFileChooser;
+    this.pendingFileChooser = null;
+    return chooser;
+  }
+
+  hasPendingFileChooserAt(x: number, y: number): boolean {
+    if (!this.pendingFileChooser) {
+      return false;
+    }
+
+    const maxAgeMs = 60000;
+    const maxDistancePx = 24;
+    const ageMs = Date.now() - this.pendingFileChooser.createdAt;
+    const distance = Math.hypot(this.pendingFileChooser.x - x, this.pendingFileChooser.y - y);
+
+    if (ageMs > maxAgeMs || distance > maxDistancePx) {
+      this.pendingFileChooser = null;
+      return false;
+    }
+
+    return true;
+  }
+
   async startScreencast(): Promise<void> {
     if (this.isScreencasting) return;
 
@@ -300,6 +386,16 @@ export class CDPBridge {
         );
         this.reportError(error);
       }
+    });
+
+    this.page.on('filechooser', (chooser) => {
+      const trigger = this.consumeLastFileChooserTrigger();
+      if (!trigger) {
+        return;
+      }
+
+      this.setPendingFileChooser(chooser, trigger.x, trigger.y);
+      this.onFileChooser?.(trigger.x, trigger.y);
     });
 
     // Start screencast
@@ -358,6 +454,25 @@ export class CDPBridge {
   async click(x: number, y: number, button: 'left' | 'right' | 'middle' = 'left'): Promise<void> {
     await this.sendMouseInput('down', x, y, button);
     await this.sendMouseInput('up', x, y, button);
+  }
+
+  async sendMouseUpAndDetectFileChooser(
+    x: number,
+    y: number,
+    button: 'left' | 'right' | 'middle' = 'left'
+  ): Promise<boolean> {
+    if (button === 'left') {
+      this.setLastFileChooserTrigger(x, y);
+    }
+
+    await this.sendMouseInput('up', x, y, button);
+
+    if (button !== 'left') {
+      return false;
+    }
+
+    await this.page.waitForTimeout(150);
+    return this.hasPendingFileChooserAt(x, y);
   }
 
   async hover(x: number, y: number): Promise<void> {
@@ -712,6 +827,39 @@ export class CDPBridge {
   }
 
   async uploadFileAtPoint(x: number, y: number, file: UploadFile): Promise<void> {
+    const pendingFileChooser = this.takePendingFileChooser(x, y);
+    if (pendingFileChooser) {
+      await pendingFileChooser.setFiles({
+        name: file.name,
+        mimeType: file.mimeType,
+        buffer: file.buffer,
+      });
+      return;
+    }
+
+    const setFilesOnHandle = async (handle: Awaited<ReturnType<Page['evaluateHandle']>>): Promise<boolean> => {
+      if (handle === null) {
+        return false;
+      }
+
+      const element = handle.asElement();
+      if (!element) {
+        await handle.dispose();
+        return false;
+      }
+
+      try {
+        await element.setInputFiles({
+          name: file.name,
+          mimeType: file.mimeType,
+          buffer: file.buffer,
+        });
+        return true;
+      } finally {
+        await handle.dispose();
+      }
+    };
+
     const handle = await this.executeWithHealthCheck(
       () => this.page.evaluateHandle(([px, py]) => {
         const element = document.elementFromPoint(px, py);
@@ -803,25 +951,11 @@ export class CDPBridge {
       { x, y }
     );
 
-    if (handle === null) {
-      throw new Error('Failed to resolve file upload target');
+    if (await setFilesOnHandle(handle)) {
+      return;
     }
 
-    const element = handle.asElement();
-    if (!element) {
-      await handle.dispose();
-      throw new Error('No file input found at selected location');
-    }
-
-    try {
-      await element.setInputFiles({
-        name: file.name,
-        mimeType: file.mimeType,
-        buffer: file.buffer,
-      });
-    } finally {
-      await handle.dispose();
-    }
+    throw new Error('No pending file chooser or file input found at selected location');
   }
 
   async takeScreenshot(
@@ -918,6 +1052,8 @@ export class CDPBridge {
   async cleanup(): Promise<void> {
     await this.stopScreencast();
     this.stopHealthMonitoring();
+    this.pendingFileChooser = null;
+    this.lastFileChooserTrigger = null;
   }
 
   async isCDPHealthy(): Promise<boolean> {

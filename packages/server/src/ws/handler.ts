@@ -378,6 +378,13 @@ async function setupBridgeAndRecorder(
         context: error.context,
       });
     },
+    onFileChooser: (x, y) => {
+      send(ws, {
+        type: 'upload:requested',
+        x,
+        y,
+      });
+    },
   });
 
   // Create recorder
@@ -661,10 +668,13 @@ async function handleMouseInput(
           break;
 
         case 'up':
-          await bridge.sendMouseInput('up', x, y, btn);
+          await bridge.sendMouseUpAndDetectFileChooser(x, y, btn);
           break;
 
         case 'click':
+          if (bridge.hasPendingFileChooserAt(x, y)) {
+            break;
+          }
           await recorder.recordClick(x, y, btn);
           break;
       }

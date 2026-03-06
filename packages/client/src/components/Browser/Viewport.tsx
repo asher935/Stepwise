@@ -30,6 +30,8 @@ export function Viewport() {
   const sessionId = useSessionStore((s) => s.sessionId);
   const setError = useSessionStore((s) => s.setError);
   const hoveredElement = useSessionStore((s) => s.hoveredElement);
+  const pendingUploadRequest = useSessionStore((s) => s.pendingUploadRequest);
+  const setPendingUploadRequest = useSessionStore((s) => s.setPendingUploadRequest);
   const stepHighlightColor = useSessionStore((s) => s.stepHighlightColor);
 
   const getViewportRect = useCallback((): DOMRect | null => {
@@ -42,10 +44,6 @@ export function Viewport() {
     return translateClientToBrowser(clientX, clientY, rect, BROWSER_DIMENSIONS);
   }, [getViewportRect]);
 
-  const isFileUploadTarget = useCallback(() => {
-    return hoveredElement?.fileUploadTarget === true;
-  }, [hoveredElement]);
-
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     const coords = translateCoords(e.clientX, e.clientY);
     if (coords) {
@@ -56,46 +54,41 @@ export function Viewport() {
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     containerRef.current?.focus();
     const coords = translateCoords(e.clientX, e.clientY);
-    if (isFileUploadTarget()) {
-      e.preventDefault();
-      e.stopPropagation();
-      if (coords) {
-        pendingUploadCoordsRef.current = coords;
-        uploadInputRef.current?.click();
-      }
-      return;
-    }
     if (coords) {
       const button = e.button === 0 ? 'left' : e.button === 2 ? 'right' : 'middle';
       wsClient.sendMouseDown(coords.x, coords.y, button);
     }
-  }, [isFileUploadTarget, translateCoords]);
+  }, [translateCoords]);
 
   const handleMouseUp = useCallback((e: React.MouseEvent) => {
-    if (isFileUploadTarget()) {
-      e.preventDefault();
-      e.stopPropagation();
-      return;
-    }
     const coords = translateCoords(e.clientX, e.clientY);
     if (coords) {
       const button = e.button === 0 ? 'left' : e.button === 2 ? 'right' : 'middle';
       wsClient.sendMouseUp(coords.x, coords.y, button);
     }
-  }, [isFileUploadTarget, translateCoords]);
+  }, [translateCoords]);
 
   const handleClick = useCallback((e: React.MouseEvent) => {
-    if (isFileUploadTarget()) {
-      e.preventDefault();
-      e.stopPropagation();
-      return;
-    }
     const coords = translateCoords(e.clientX, e.clientY);
     if (coords) {
       const button = e.button === 0 ? 'left' : e.button === 2 ? 'right' : 'middle';
       wsClient.sendMouseClick(coords.x, coords.y, button);
     }
-  }, [isFileUploadTarget, translateCoords]);
+  }, [translateCoords]);
+
+  const handleChooseUploadFile = useCallback(() => {
+    if (!pendingUploadRequest) {
+      return;
+    }
+
+    pendingUploadCoordsRef.current = pendingUploadRequest;
+    uploadInputRef.current?.click();
+  }, [pendingUploadRequest]);
+
+  const handleCancelUpload = useCallback(() => {
+    pendingUploadCoordsRef.current = null;
+    setPendingUploadRequest(null);
+  }, [setPendingUploadRequest]);
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -152,6 +145,7 @@ export function Viewport() {
     pendingUploadCoordsRef.current = null;
 
     if (!selectedFile || !coords || !sessionId) {
+      setPendingUploadRequest(null);
       e.target.value = '';
       return;
     }
@@ -162,9 +156,10 @@ export function Viewport() {
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Failed to upload file');
     } finally {
+      setPendingUploadRequest(null);
       e.target.value = '';
     }
-  }, [sessionId, setError]);
+  }, [sessionId, setError, setPendingUploadRequest]);
 
   if (!isConnected || !currentFrame) {
     return (
@@ -218,6 +213,32 @@ export function Viewport() {
           />
           <div className="h-full flex items-center justify-center p-8">
             <div className="relative">
+              {pendingUploadRequest && (
+                <div className="absolute left-1/2 top-6 z-20 w-[min(28rem,calc(100%-2rem))] -translate-x-1/2 rounded-2xl border border-[#D7C7B8] bg-white/95 px-4 py-3 shadow-[0_18px_48px_rgba(45,36,30,0.18)] backdrop-blur">
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <div className="text-sm font-semibold text-[#2D241E]">File requested by page</div>
+                      <div className="text-xs text-[#6B5E55]">Choose a local file to continue the upload.</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        className="rounded-full border border-[#D7C7B8] px-3 py-1.5 text-xs font-medium text-[#6B5E55]"
+                        onClick={handleCancelUpload}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-full bg-[#2D241E] px-3 py-1.5 text-xs font-semibold text-white"
+                        onClick={handleChooseUploadFile}
+                      >
+                        Choose File
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
               <img
                 ref={imageRef}
                 src={currentFrame}

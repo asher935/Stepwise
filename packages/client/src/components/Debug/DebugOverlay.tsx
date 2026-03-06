@@ -67,6 +67,8 @@ function describeServerMessage(message: ServerMessage): string {
       return 'session:unhealthy';
     case 'element:hover':
       return `element:hover ${message.element?.tagName || 'null'}`;
+    case 'upload:requested':
+      return `upload:requested (${Math.round(message.x)},${Math.round(message.y)})`;
     case 'error':
       return `error ${message.code}`;
     case 'replay:status':

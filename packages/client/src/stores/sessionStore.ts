@@ -35,6 +35,7 @@ interface SessionStore {
   error: string | null;
   expiryWarningMs: number | null;
   hoveredElement: ElementInfo | null;
+  pendingUploadRequest: { x: number; y: number } | null;
   collapsedStepIds: Set<string>;
   guideTitle: string;
   hoveredStepId: string | null;
@@ -64,6 +65,7 @@ interface SessionStore {
   extendSession: () => void;
   clearExpiryWarning: () => void;
   setHoveredElement: (element: ElementInfo | null) => void;
+  setPendingUploadRequest: (request: { x: number; y: number } | null) => void;
   setGuideTitle: (title: string) => void;
   toggleStepCollapsed: (stepId: string) => void;
   setHoveredStepId: (stepId: string | null) => void;
@@ -84,6 +86,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   error: null,
   expiryWarningMs: null,
   hoveredElement: null,
+  pendingUploadRequest: null,
   collapsedStepIds: new Set<string>(),
   guideTitle: 'Untitled Guide',
   hoveredStepId: null,
@@ -329,6 +332,10 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     set({ hoveredElement: element });
   },
 
+  setPendingUploadRequest: (request: { x: number; y: number } | null) => {
+    set({ pendingUploadRequest: request });
+  },
+
   setGuideTitle: (title: string) => {
     set({ guideTitle: title });
   },
@@ -375,6 +382,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       error: null,
       expiryWarningMs: null,
       hoveredElement: null,
+      pendingUploadRequest: null,
       collapsedStepIds: new Set<string>(),
       guideTitle: 'Untitled Guide',
       hoveredStepId: null,
@@ -429,6 +437,9 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
           break;
         case 'element:hover':
           set({ hoveredElement: message.element });
+          break;
+        case 'upload:requested':
+          set({ pendingUploadRequest: { x: message.x, y: message.y }, error: null });
           break;
         case 'error':
           set({ error: message.message, expiryWarningMs: null });

@@ -143,17 +143,20 @@ export class Recorder {
     clip?: { x: number; y: number; width: number; height: number },
     highlightBoundingBox?: { x: number; y: number; width: number; height: number }
   ): Promise<{ screenshotData: Buffer; redactionRects: Rect[] }> {
-    // Wait for page to settle
     if (delay > 0) {
       await new Promise(resolve => setTimeout(resolve, delay));
     }
 
     const redactionRects = await this.detectInputRedactionRects(clip);
 
-    // Use highlighted screenshot if bounding box is provided
     if (highlightBoundingBox) {
-      const screenshotData = await this.cdpBridge.takeScreenshotWithHighlight(highlightBoundingBox, clip);
-      return { screenshotData, redactionRects };
+      try {
+        const screenshotData = await this.cdpBridge.takeScreenshotWithHighlight(highlightBoundingBox, clip);
+        return { screenshotData, redactionRects };
+      } catch {
+        const screenshotData = await this.cdpBridge.takeScreenshot(clip);
+        return { screenshotData, redactionRects };
+      }
     }
 
     const screenshotData = await this.cdpBridge.takeScreenshot(clip);
@@ -168,11 +171,23 @@ export class Recorder {
       await new Promise(resolve => setTimeout(resolve, delay));
     }
 
-    if (highlightBoundingBox) {
-      return this.cdpBridge.takeScreenshotWithHighlight(highlightBoundingBox, undefined, true);
-    }
+    try {
+      if (highlightBoundingBox) {
+        return await this.cdpBridge.takeScreenshotWithHighlight(highlightBoundingBox, undefined, true);
+      }
 
-    return this.cdpBridge.takeScreenshot(undefined, true);
+      return await this.cdpBridge.takeScreenshot(undefined, true);
+    } catch {
+      if (highlightBoundingBox) {
+        try {
+          return await this.cdpBridge.takeScreenshotWithHighlight(highlightBoundingBox);
+        } catch {
+          return this.cdpBridge.takeScreenshot();
+        }
+      }
+
+      return this.cdpBridge.takeScreenshot();
+    }
   }
 
   /**
@@ -643,7 +658,6 @@ export class Recorder {
 
   /**
    * Prepares screenshot data before a click action
-   * This should be called before sending mouse down event to browser
    */
   async prepareClickScreenshot(
     x: number,
@@ -653,58 +667,46 @@ export class Recorder {
     if (this.session.recordingPaused) return;
     if (this.isStepLimitReached()) return;
 
-    // Flush any pending type step first (before preparing click)
-    await this.flushPendingTypeStep();
+    try {
+      await this.flushPendingTypeStep();
 
-    // Get element info at click point
-    const elementInfo = await this.cdpBridge.getElementAtPoint(x, y);
+      const elementInfo = await this.cdpBridge.getElementAtPoint(x, y);
 
-    const clip = await this.getClipForTarget(
-      elementInfo?.boundingBox ?? null,
-      { x, y }
-    );
-    const highlightBoundingBox = elementInfo?.boundingBox && elementInfo.boundingBox.width > 0 && elementInfo.boundingBox.height > 0
-      ? elementInfo.boundingBox
-      : undefined;
+      const clip = await this.getClipForTarget(
+        elementInfo?.boundingBox ?? null,
+        { x, y }
+      );
+      const highlightBoundingBox = elementInfo?.boundingBox && elementInfo.boundingBox.width > 0 && elementInfo.boundingBox.height > 0
+        ? elementInfo.boundingBox
+        : undefined;
 
-    // Capture screenshot with highlight if element has bounding box
-    const { screenshotData, redactionRects } = await this.captureScreenshot(
-      0,
-      clip ?? undefined,
-      highlightBoundingBox
-    );
-    const screenshotPath = await this.saveScreenshot(screenshotData);
-    const screenshotDataUrl = this.toScreenshotDataUrl(screenshotData);
-    const viewportCapture = clip
-      ? await this.captureScreenshot(
+      const { screenshotData, redactionRects } = await this.captureScreenshot(
         0,
-        undefined,
+        clip ?? undefined,
         highlightBoundingBox
-      )
-      : null;
-    const fullScreenshotData = viewportCapture?.screenshotData ?? screenshotData;
-    const fullScreenshotPath = clip ? await this.saveScreenshot(fullScreenshotData) : screenshotPath;
-    const fullScreenshotDataUrl = clip ? this.toScreenshotDataUrl(fullScreenshotData) : screenshotDataUrl;
-    const pageScreenshotData = await this.captureFullPageScreenshot(0, highlightBoundingBox);
-    const pageScreenshotPath = await this.saveScreenshot(pageScreenshotData);
-    const pageScreenshotDataUrl = this.toScreenshotDataUrl(pageScreenshotData);
+      );
+      const screenshotPath = await this.saveScreenshot(screenshotData);
+      const screenshotDataUrl = this.toScreenshotDataUrl(screenshotData);
 
-    // Store for later use in recordClick
-    this.pendingClickScreenshot = {
-      x,
-      y,
-      button,
-      screenshotData,
-      screenshotPath,
-      screenshotDataUrl,
-      fullScreenshotPath,
-      fullScreenshotDataUrl,
-      pageScreenshotPath,
-      pageScreenshotDataUrl,
-      elementInfo,
-      redactionRects,
-      clip
-    };
+      this.pendingClickScreenshot = {
+        x,
+        y,
+        button,
+        screenshotData,
+        screenshotPath,
+        screenshotDataUrl,
+        fullScreenshotPath: screenshotPath,
+        fullScreenshotDataUrl: screenshotDataUrl,
+        pageScreenshotPath: screenshotPath,
+        pageScreenshotDataUrl: screenshotDataUrl,
+        elementInfo,
+        redactionRects,
+        clip
+      };
+    } catch (error) {
+      this.pendingClickScreenshot = null;
+      console.warn('[Recorder] Failed to prepare click screenshot:', error);
+    }
   }
 
   /**
@@ -734,11 +736,10 @@ export class Recorder {
     let redactionRects: Rect[];
     let clip: { x: number; y: number; width: number; height: number } | null;
 
-    // Use pre-captured screenshot if available and coordinates match
-      if (this.pendingClickScreenshot &&
-        this.pendingClickScreenshot.x === x &&
-        this.pendingClickScreenshot.y === y &&
-        this.pendingClickScreenshot.button === button) {
+    if (this.pendingClickScreenshot &&
+      this.pendingClickScreenshot.x === x &&
+      this.pendingClickScreenshot.y === y &&
+      this.pendingClickScreenshot.button === button) {
 
       const pending = this.pendingClickScreenshot;
       screenshotPath = pending.screenshotPath;
@@ -754,7 +755,6 @@ export class Recorder {
       // Clear the pending screenshot
       this.pendingClickScreenshot = null;
     } else {
-      // Fallback: capture screenshot now (this shouldn't normally happen)
       await this.flushPendingTypeStep();
 
       elementInfo = await this.cdpBridge.getElementAtPoint(x, y);
@@ -767,7 +767,6 @@ export class Recorder {
         ? elementInfo.boundingBox
         : undefined;
 
-      // Capture screenshot with highlight if element has bounding box
       const capture = await this.captureScreenshot(
         0,
         clip ?? undefined,
@@ -777,19 +776,10 @@ export class Recorder {
       redactionRects = capture.redactionRects;
       screenshotPath = await this.saveScreenshot(screenshotData);
       screenshotDataUrl = this.toScreenshotDataUrl(screenshotData);
-      const viewportCapture = clip
-        ? await this.captureScreenshot(
-          0,
-          undefined,
-          highlightBoundingBox
-        )
-        : null;
-      const fullScreenshotData = viewportCapture?.screenshotData ?? screenshotData;
-      fullScreenshotPath = clip ? await this.saveScreenshot(fullScreenshotData) : screenshotPath;
-      fullScreenshotDataUrl = clip ? this.toScreenshotDataUrl(fullScreenshotData) : screenshotDataUrl;
-      const pageScreenshotData = await this.captureFullPageScreenshot(0, highlightBoundingBox);
-      pageScreenshotPath = await this.saveScreenshot(pageScreenshotData);
-      pageScreenshotDataUrl = this.toScreenshotDataUrl(pageScreenshotData);
+      fullScreenshotPath = screenshotPath;
+      fullScreenshotDataUrl = screenshotDataUrl;
+      pageScreenshotPath = screenshotPath;
+      pageScreenshotDataUrl = screenshotDataUrl;
     }
 
     // Create highlight

@@ -196,6 +196,8 @@ export class CDPBridge {
   private healthCheckTimer: ReturnType<typeof setInterval> | null = null;
   private pressedButtons: number = 0;
   private highlightColor: string = '#FF0000';
+  private readonly screenshotTimeoutMs: number = 7000;
+  private readonly fullPageScreenshotTimeoutMs: number = 12000;
   private pendingFileChooser: {
     chooser: FileChooser;
     x: number;
@@ -991,12 +993,15 @@ export class CDPBridge {
       options.quality = env.SCREENSHOT_QUALITY;
     }
 
-    return await this.page.screenshot(options);
+    return await withTimeout(this.page.screenshot(options), this.screenshotTimeoutMs);
   }
 
   private async takeFullPageScreenshot(): Promise<Buffer> {
     const initialMetrics = await this.getFullPageMetrics();
-    const screenshot = await this.page.screenshot(this.getFullPageScreenshotOptions());
+    const screenshot = await withTimeout(
+      this.page.screenshot(this.getFullPageScreenshotOptions()),
+      this.fullPageScreenshotTimeoutMs
+    );
 
     if (!(await this.shouldRetryFullPageCapture(screenshot, initialMetrics))) {
       return screenshot;
@@ -1163,7 +1168,10 @@ export class CDPBridge {
 
     try {
       await this.page.waitForTimeout(100);
-      return await this.page.screenshot(this.getFullPageScreenshotOptions());
+      return await withTimeout(
+        this.page.screenshot(this.getFullPageScreenshotOptions()),
+        this.fullPageScreenshotTimeoutMs
+      );
     } finally {
       await this.page.evaluate(() => {
         const state = globalThis as typeof globalThis & {
@@ -1242,14 +1250,16 @@ export class CDPBridge {
   ): Promise<Buffer> {
     await this.injectHighlightOverlay(boundingBox, fullPage);
 
-    // Small delay to ensure the overlay is rendered
-    await new Promise(resolve => setTimeout(resolve, 50));
-
-    const screenshot = await this.takeScreenshot(clip, fullPage);
-
-    await this.removeHighlightOverlay();
-
-    return screenshot;
+    try {
+      await this.page.waitForTimeout(50);
+      return await this.takeScreenshot(clip, fullPage);
+    } finally {
+      try {
+        await this.removeHighlightOverlay();
+      } catch {
+        void 0;
+      }
+    }
   }
 
   async cleanup(): Promise<void> {

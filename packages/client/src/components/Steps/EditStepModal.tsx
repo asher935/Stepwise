@@ -52,6 +52,107 @@ function getLegendItemKey(item: StepLegendItem): string {
   ].join(':');
 }
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function getDownloadExtension(url: string): string {
+  if (url.startsWith('data:image/jpeg') || url.startsWith('data:image/jpg')) {
+    return 'jpg';
+  }
+  if (url.startsWith('data:image/webp')) {
+    return 'webp';
+  }
+  return 'png';
+}
+
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('Failed to load screenshot image'));
+    image.src = src;
+  });
+}
+
+function drawRoundedRect(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, radius: number): void {
+  const r = Math.min(radius, width / 2, height / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + width - r, y);
+  ctx.quadraticCurveTo(x + width, y, x + width, y + r);
+  ctx.lineTo(x + width, y + height - r);
+  ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+  ctx.lineTo(x + r, y + height);
+  ctx.quadraticCurveTo(x, y + height, x, y + height - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+async function buildScreenshotDownloadUrl(
+  screenshotUrl: string,
+  legendItems: StepLegendItem[],
+  highlightColor: string,
+): Promise<string> {
+  if (legendItems.length === 0) {
+    return screenshotUrl;
+  }
+
+  const image = await loadImage(screenshotUrl);
+  const canvas = document.createElement('canvas');
+  canvas.width = image.naturalWidth;
+  canvas.height = image.naturalHeight;
+
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    return screenshotUrl;
+  }
+
+  ctx.drawImage(image, 0, 0);
+
+  for (const item of legendItems) {
+    const x = clamp(item.boundingBox.x, 0, canvas.width);
+    const y = clamp(item.boundingBox.y, 0, canvas.height);
+    const width = clamp(item.boundingBox.width, 0, canvas.width - x);
+    const height = clamp(item.boundingBox.height, 0, canvas.height - y);
+
+    if (width <= 0 || height <= 0) {
+      continue;
+    }
+
+    const bubbleRadius = 12;
+    const bubbleCenterX = clamp(x + width + 16, bubbleRadius, canvas.width - bubbleRadius);
+    const bubbleCenterY = clamp(y + (height / 2), bubbleRadius, canvas.height - bubbleRadius);
+
+    ctx.save();
+    ctx.fillStyle = hexToRgba(highlightColor, 0.1);
+    ctx.strokeStyle = highlightColor;
+    ctx.lineWidth = 2;
+    drawRoundedRect(ctx, x, y, width, height, 6);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.fillStyle = highlightColor;
+    ctx.arc(bubbleCenterX, bubbleCenterY, bubbleRadius, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = '900 11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(String(item.bubbleNumber), bubbleCenterX, bubbleCenterY + 0.5);
+    ctx.restore();
+  }
+
+  return canvas.toDataURL('image/png');
+}
+
 export function EditStepModal({ open, onOpenChange, screenshotDataUrl, fullScreenshotDataUrl, pageScreenshotDataUrl, originalScreenshotDataUrl, stepNumber, caption, onSaveCaption, legendItems, pageLegendItems, onSaveLegendItems, selectedScreenshotMode, onSaveScreenshotMode, onToggleRedaction, canToggleRedaction, isRedacted }: EditStepModalProps) {
   const stepHighlightColor = useSessionStore((s) => s.stepHighlightColor);
   const [editedCaption, setEditedCaption] = useState(caption);
@@ -115,21 +216,42 @@ export function EditStepModal({ open, onOpenChange, screenshotDataUrl, fullScree
     }
   }, [caption, isEditing]);
 
-  const handleDownload = () => {
+  const handleDownload = useCallback(async () => {
     const currentScreenshotUrl = screenshotMode === 'zoomed'
       ? (redactedScreenshotUrl || originalScreenshotUrl)
       : screenshotMode === 'viewport'
         ? (fullScreenshotDataUrl || originalScreenshotUrl)
         : (pageScreenshotDataUrl || fullScreenshotDataUrl || originalScreenshotUrl);
-    const urlToDownload = currentScreenshotUrl;
-    if (!urlToDownload) return;
+    if (!currentScreenshotUrl) return;
+
+    let urlToDownload = currentScreenshotUrl;
+    try {
+      urlToDownload = await buildScreenshotDownloadUrl(
+        currentScreenshotUrl,
+        displayedLegendItems,
+        stepHighlightColor,
+      );
+    } catch (error) {
+      console.error('Failed to build highlighted screenshot download:', error);
+    }
+
+    const extension = getDownloadExtension(urlToDownload);
     const a = document.createElement('a');
     a.href = urlToDownload;
-    a.download = `step-${stepNumber}-capture.png`;
+    a.download = `step-${stepNumber}-capture.${extension}`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-  };
+  }, [
+    screenshotMode,
+    redactedScreenshotUrl,
+    originalScreenshotUrl,
+    fullScreenshotDataUrl,
+    pageScreenshotDataUrl,
+    displayedLegendItems,
+    stepHighlightColor,
+    stepNumber,
+  ]);
 
   const handleSaveCaption = useCallback(async () => {
     setIsSaving(true);

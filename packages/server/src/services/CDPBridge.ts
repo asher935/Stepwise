@@ -821,8 +821,8 @@ export class CDPBridge {
           name: (target as HTMLInputElement).name || undefined,
           placeholder: (target as HTMLInputElement).placeholder || undefined,
           boundingBox: {
-            x: rect.x,
-            y: rect.y,
+            x: rect.x + window.scrollX,
+            y: rect.y + window.scrollY,
             width: rect.width,
             height: rect.height,
           },
@@ -1194,8 +1194,8 @@ export class CDPBridge {
       // Create highlight overlay element
       const overlay = document.createElement('div');
       overlay.id = 'stepwise-highlight-overlay';
-      const x = isFullPage ? window.scrollX + box.x : box.x;
-      const y = isFullPage ? window.scrollY + box.y : box.y;
+      const x = isFullPage ? box.x : box.x - window.scrollX;
+      const y = isFullPage ? box.y : box.y - window.scrollY;
       overlay.style.position = isFullPage ? 'absolute' : 'fixed';
       overlay.style.left = `${x}px`;
       overlay.style.top = `${y}px`;

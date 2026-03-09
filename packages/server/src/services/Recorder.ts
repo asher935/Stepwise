@@ -560,12 +560,29 @@ export class Recorder {
     }
   }
 
+  private async getScrollPosition(): Promise<{ x: number; y: number } | null> {
+    const page = this.session.page;
+    if (!page) return null;
+
+    try {
+      return await page.evaluate(() => ({
+        x: window.scrollX,
+        y: window.scrollY,
+      }));
+    } catch {
+      return null;
+    }
+  }
+
   private async getClipForTarget(
     boundingBox: { x: number; y: number; width: number; height: number } | null,
     point?: { x: number; y: number }
   ): Promise<{ x: number; y: number; width: number; height: number } | null> {
     const viewport = await this.getViewportSize();
     if (!viewport) return null;
+    const scrollPosition = await this.getScrollPosition();
+    const scrollX = scrollPosition?.x ?? 0;
+    const scrollY = scrollPosition?.y ?? 0;
 
     // Minimum and maximum screenshot dimensions
     const minWidth = 400;
@@ -573,9 +590,19 @@ export class Recorder {
     const maxWidth = viewport.width;
     const maxHeight = viewport.height;
 
+    // Convert absolute page coordinates into viewport-local clip coordinates.
+    const normalizedBoundingBox = boundingBox && boundingBox.width > 0 && boundingBox.height > 0
+      ? {
+          x: boundingBox.x - scrollX,
+          y: boundingBox.y - scrollY,
+          width: boundingBox.width,
+          height: boundingBox.height,
+        }
+      : null;
+
     // Use element bounding box if available, otherwise fall back to cursor area
-    const baseBox = boundingBox && boundingBox.width > 0 && boundingBox.height > 0
-      ? boundingBox
+    const baseBox = normalizedBoundingBox
+      ? normalizedBoundingBox
       : point
         ? { x: point.x - 100, y: point.y - 100, width: 200, height: 200 }
         : null;
@@ -1440,8 +1467,8 @@ export class Recorder {
           placeholder: (element as HTMLInputElement).placeholder || undefined,
           labelText,
           boundingBox: {
-            x: rect.x,
-            y: rect.y,
+            x: rect.x + window.scrollX,
+            y: rect.y + window.scrollY,
             width: rect.width,
             height: rect.height,
           },

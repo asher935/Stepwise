@@ -14,6 +14,7 @@ export type SessionMode = 'record' | 'replay';
 export interface SessionState {
   id: string;
   status: SessionStatus;
+  recordingPaused: boolean;
   url: string | null;
   title: string | null;
   stepCount: number;

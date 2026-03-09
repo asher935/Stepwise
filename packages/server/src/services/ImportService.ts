@@ -107,7 +107,7 @@ export class ImportService {
       
       readable
         .pipe(unzipper.Parse())
-        .on('entry', async (entry: unzipper.Entry) => {
+        .on('entry', (entry: unzipper.Entry) => {
           const path = entry.path;
           const type = entry.type;
 

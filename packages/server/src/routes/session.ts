@@ -215,6 +215,52 @@ export const sessionRoutes = new Elysia({ prefix: '/api/sessions' })
   )
 
   .post(
+    '/:sessionId/recording',
+    async ({ params, headers, body }) => {
+      const token = headers['authorization']?.replace('Bearer ', '');
+
+      if (!token || !sessionManager.validateToken(params.sessionId, token)) {
+        return {
+          success: false,
+          error: {
+            code: ERROR_CODES.INVALID_TOKEN,
+            message: 'Invalid or missing token',
+          },
+        };
+      }
+
+      const session = sessionManager.getSession(params.sessionId);
+      if (!session || session.status !== 'active') {
+        return {
+          success: false,
+          error: {
+            code: ERROR_CODES.SESSION_NOT_FOUND,
+            message: 'Session not found or not active',
+          },
+        };
+      }
+
+      if (body.paused) {
+        const recorder = getSessionRecorder(params.sessionId);
+        if (recorder) {
+          await recorder.discardPendingActions();
+        }
+      }
+
+      const state = sessionManager.setRecordingPaused(params.sessionId, body.paused);
+      return { success: true, data: state };
+    },
+    {
+      params: t.Object({
+        sessionId: t.String(),
+      }),
+      body: t.Object({
+        paused: t.Boolean(),
+      }),
+    }
+  )
+
+  .post(
     '/:sessionId/upload',
     async ({ params, headers, body }) => {
       const token = headers['authorization']?.replace('Bearer ', '');

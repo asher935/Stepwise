@@ -161,10 +161,15 @@ export class Recorder {
   }
 
   private async captureFullPageScreenshot(
-    delay: number = 0
+    delay: number = 0,
+    highlightBoundingBox?: { x: number; y: number; width: number; height: number }
   ): Promise<Buffer> {
     if (delay > 0) {
       await new Promise(resolve => setTimeout(resolve, delay));
+    }
+
+    if (highlightBoundingBox) {
+      return this.cdpBridge.takeScreenshotWithHighlight(highlightBoundingBox, undefined, true);
     }
 
     return this.cdpBridge.takeScreenshot(undefined, true);
@@ -618,6 +623,7 @@ export class Recorder {
     y: number,
     button: 'left' | 'right' | 'middle' = 'left'
   ): Promise<void> {
+    if (this.session.recordingPaused) return;
     if (this.isStepLimitReached()) return;
 
     // Flush any pending type step first (before preparing click)
@@ -630,14 +636,15 @@ export class Recorder {
       elementInfo?.boundingBox ?? null,
       { x, y }
     );
+    const highlightBoundingBox = elementInfo?.boundingBox && elementInfo.boundingBox.width > 0 && elementInfo.boundingBox.height > 0
+      ? elementInfo.boundingBox
+      : undefined;
 
     // Capture screenshot with highlight if element has bounding box
     const { screenshotData, redactionRects } = await this.captureScreenshot(
       0,
       clip ?? undefined,
-      elementInfo?.boundingBox && elementInfo.boundingBox.width > 0 && elementInfo.boundingBox.height > 0
-        ? elementInfo.boundingBox
-        : undefined
+      highlightBoundingBox
     );
     const screenshotPath = await this.saveScreenshot(screenshotData);
     const screenshotDataUrl = this.toScreenshotDataUrl(screenshotData);
@@ -645,15 +652,13 @@ export class Recorder {
       ? await this.captureScreenshot(
         0,
         undefined,
-        elementInfo?.boundingBox && elementInfo.boundingBox.width > 0 && elementInfo.boundingBox.height > 0
-          ? elementInfo.boundingBox
-          : undefined
+        highlightBoundingBox
       )
       : null;
     const fullScreenshotData = viewportCapture?.screenshotData ?? screenshotData;
     const fullScreenshotPath = clip ? await this.saveScreenshot(fullScreenshotData) : screenshotPath;
     const fullScreenshotDataUrl = clip ? this.toScreenshotDataUrl(fullScreenshotData) : screenshotDataUrl;
-    const pageScreenshotData = await this.captureFullPageScreenshot(0);
+    const pageScreenshotData = await this.captureFullPageScreenshot(0, highlightBoundingBox);
     const pageScreenshotPath = await this.saveScreenshot(pageScreenshotData);
     const pageScreenshotDataUrl = this.toScreenshotDataUrl(pageScreenshotData);
 
@@ -683,6 +688,7 @@ export class Recorder {
     y: number,
     button: 'left' | 'right' | 'middle' = 'left'
   ): Promise<Step | null> {
+    if (this.session.recordingPaused) return null;
     if (this.isStepLimitReached()) return null;
 
     // Flush any pending scroll step first (in case prepareClickScreenshot wasn't called)
@@ -730,14 +736,15 @@ export class Recorder {
         elementInfo?.boundingBox ?? null,
         { x, y }
       );
+      const highlightBoundingBox = elementInfo?.boundingBox && elementInfo.boundingBox.width > 0 && elementInfo.boundingBox.height > 0
+        ? elementInfo.boundingBox
+        : undefined;
 
       // Capture screenshot with highlight if element has bounding box
       const capture = await this.captureScreenshot(
         0,
         clip ?? undefined,
-        elementInfo?.boundingBox && elementInfo.boundingBox.width > 0 && elementInfo.boundingBox.height > 0
-          ? elementInfo.boundingBox
-          : undefined
+        highlightBoundingBox
       );
       const screenshotData = capture.screenshotData;
       redactionRects = capture.redactionRects;
@@ -747,15 +754,13 @@ export class Recorder {
         ? await this.captureScreenshot(
           0,
           undefined,
-          elementInfo?.boundingBox && elementInfo.boundingBox.width > 0 && elementInfo.boundingBox.height > 0
-            ? elementInfo.boundingBox
-            : undefined
+          highlightBoundingBox
         )
         : null;
       const fullScreenshotData = viewportCapture?.screenshotData ?? screenshotData;
       fullScreenshotPath = clip ? await this.saveScreenshot(fullScreenshotData) : screenshotPath;
       fullScreenshotDataUrl = clip ? this.toScreenshotDataUrl(fullScreenshotData) : screenshotDataUrl;
-      const pageScreenshotData = await this.captureFullPageScreenshot(0);
+      const pageScreenshotData = await this.captureFullPageScreenshot(0, highlightBoundingBox);
       pageScreenshotPath = await this.saveScreenshot(pageScreenshotData);
       pageScreenshotDataUrl = this.toScreenshotDataUrl(pageScreenshotData);
     }
@@ -800,6 +805,7 @@ export class Recorder {
    * Records keyboard input (accumulated with debounce timer)
    */
   async recordKeyInput(key: string, text?: string): Promise<void> {
+    if (this.session.recordingPaused) return;
     if (this.isStepLimitReached()) return;
 
     // If finalizing, skip this keystroke to avoid race conditions
@@ -897,6 +903,15 @@ export class Recorder {
   private async finalizePendingTypeStep(): Promise<void> {
     if (!this.pendingTypeStep) return;
 
+    if (this.session.recordingPaused) {
+      this.pendingTypeStep = null;
+      if (this.typeDebounceTimer) {
+        clearTimeout(this.typeDebounceTimer);
+        this.typeDebounceTimer = null;
+      }
+      return;
+    }
+
     // Set finalizing flag to prevent race conditions
     this.isFinalizing = true;
 
@@ -910,12 +925,13 @@ export class Recorder {
       }
 
       // Capture screenshot now that typing has paused
+      const highlightBoundingBox = step.target.boundingBox && step.target.boundingBox.width > 0 && step.target.boundingBox.height > 0
+        ? step.target.boundingBox
+        : undefined;
       const capture = await this.captureScreenshot(
         0,
         step.screenshotClip ?? undefined,
-        step.target.boundingBox && step.target.boundingBox.width > 0 && step.target.boundingBox.height > 0
-          ? step.target.boundingBox
-          : undefined
+        highlightBoundingBox
       );
       const screenshotData = capture.screenshotData;
       const screenshotPath = await this.saveScreenshot(screenshotData);
@@ -923,14 +939,12 @@ export class Recorder {
         ? await this.captureScreenshot(
           0,
           undefined,
-          step.target.boundingBox && step.target.boundingBox.width > 0 && step.target.boundingBox.height > 0
-            ? step.target.boundingBox
-            : undefined
+          highlightBoundingBox
         )
         : null;
       const fullScreenshotData = viewportCapture?.screenshotData ?? screenshotData;
       const fullScreenshotPath = step.screenshotClip ? await this.saveScreenshot(fullScreenshotData) : screenshotPath;
-      const pageScreenshotData = await this.captureFullPageScreenshot(0);
+      const pageScreenshotData = await this.captureFullPageScreenshot(0, highlightBoundingBox);
       const pageScreenshotPath = await this.saveScreenshot(pageScreenshotData);
 
       // Redact if needed
@@ -998,6 +1012,14 @@ export class Recorder {
    */
   private async updateLastTypeStepScreenshot(): Promise<void> {
     if (!this.lastTypeStep) return;
+    if (this.session.recordingPaused) {
+      this.lastTypeStep = null;
+      if (this.typeDebounceTimer) {
+        clearTimeout(this.typeDebounceTimer);
+        this.typeDebounceTimer = null;
+      }
+      return;
+    }
 
     this.isFinalizing = true;
     const step = this.lastTypeStep.step;
@@ -1014,12 +1036,13 @@ export class Recorder {
       const clip = await this.getClipForTarget(focusedElement?.boundingBox ?? null);
 
       // Capture new screenshot
+      const highlightBoundingBox = focusedElement?.boundingBox && focusedElement.boundingBox.width > 0 && focusedElement.boundingBox.height > 0
+        ? focusedElement.boundingBox
+        : undefined;
       const capture = await this.captureScreenshot(
         50,
         clip ?? undefined,
-        focusedElement?.boundingBox && focusedElement.boundingBox.width > 0 && focusedElement.boundingBox.height > 0
-          ? focusedElement.boundingBox
-          : undefined
+        highlightBoundingBox
       );
       const screenshotData = capture.screenshotData;
 
@@ -1028,14 +1051,12 @@ export class Recorder {
         ? await this.captureScreenshot(
           0,
           undefined,
-          focusedElement?.boundingBox && focusedElement.boundingBox.width > 0 && focusedElement.boundingBox.height > 0
-            ? focusedElement.boundingBox
-            : undefined
+          highlightBoundingBox
         )
         : null;
       const fullScreenshotData = viewportCapture?.screenshotData ?? screenshotData;
       const fullScreenshotPath = clip ? await this.saveScreenshot(fullScreenshotData) : screenshotPath;
-      const pageScreenshotData = await this.captureFullPageScreenshot(0);
+      const pageScreenshotData = await this.captureFullPageScreenshot(0, highlightBoundingBox);
       const pageScreenshotPath = await this.saveScreenshot(pageScreenshotData);
 
       // Redact if needed
@@ -1078,6 +1099,7 @@ export class Recorder {
    * Records navigation
    */
   async recordNavigation(fromUrl: string, toUrl: string): Promise<Step | null> {
+    if (this.session.recordingPaused) return null;
     if (this.isStepLimitReached()) return null;
 
     // Flush any pending type or scroll steps
@@ -1122,6 +1144,7 @@ export class Recorder {
    * Records scroll action (tracked until next action)
    */
   async recordScroll(deltaX: number, deltaY: number): Promise<void> {
+    if (this.session.recordingPaused) return;
     if (this.isStepLimitReached()) return;
 
     const now = Date.now();
@@ -1149,6 +1172,10 @@ export class Recorder {
    */
   private async flushPendingScrollStep(): Promise<void> {
     if (!this.pendingScrollData) return;
+    if (this.session.recordingPaused) {
+      this.pendingScrollData = null;
+      return;
+    }
 
     // Only create a step if there was meaningful scroll distance
     const { totalDeltaX, totalDeltaY } = this.pendingScrollData;
@@ -1197,6 +1224,7 @@ export class Recorder {
    * Records a paste action (Cmd+V / Ctrl+V)
    */
   async recordPaste(text: string): Promise<void> {
+    if (this.session.recordingPaused) return;
     if (this.isStepLimitReached()) return;
 
     // Flush any pending type or scroll steps
@@ -1226,14 +1254,15 @@ export class Recorder {
     const clip = await this.getClipForTarget(
       focusedElement?.boundingBox ?? null
     );
+    const highlightBoundingBox = focusedElement?.boundingBox && focusedElement.boundingBox.width > 0 && focusedElement.boundingBox.height > 0
+      ? focusedElement.boundingBox
+      : undefined;
 
     // Capture screenshot with highlight
     const capture = await this.captureScreenshot(
       50, // Small buffer to ensure paste is complete
       clip ?? undefined,
-      focusedElement?.boundingBox && focusedElement.boundingBox.width > 0 && focusedElement.boundingBox.height > 0
-        ? focusedElement.boundingBox
-        : undefined
+      highlightBoundingBox
     );
     const screenshotData = capture.screenshotData;
     const screenshotPath = await this.saveScreenshot(screenshotData);
@@ -1242,15 +1271,13 @@ export class Recorder {
       ? await this.captureScreenshot(
         0,
         undefined,
-        focusedElement?.boundingBox && focusedElement.boundingBox.width > 0 && focusedElement.boundingBox.height > 0
-          ? focusedElement.boundingBox
-          : undefined
+        highlightBoundingBox
       )
       : null;
     const fullScreenshotData = viewportCapture?.screenshotData ?? screenshotData;
     const fullScreenshotPath = clip ? await this.saveScreenshot(fullScreenshotData) : screenshotPath;
     const fullScreenshotDataUrl = clip ? this.toScreenshotDataUrl(fullScreenshotData) : screenshotDataUrl;
-    const pageScreenshotData = await this.captureFullPageScreenshot(0);
+    const pageScreenshotData = await this.captureFullPageScreenshot(0, highlightBoundingBox);
     const pageScreenshotPath = await this.saveScreenshot(pageScreenshotData);
     const pageScreenshotDataUrl = this.toScreenshotDataUrl(pageScreenshotData);
 
@@ -1489,6 +1516,18 @@ export class Recorder {
       /^sk-/, // API key pattern
     ];
     return sensitivePatterns.some((pattern) => pattern.test(text));
+  }
+
+  async discardPendingActions(): Promise<void> {
+    this.pendingClickScreenshot = null;
+    this.pendingScrollData = null;
+    this.pendingTypeStep = null;
+    this.lastTypeStep = null;
+
+    if (this.typeDebounceTimer) {
+      clearTimeout(this.typeDebounceTimer);
+      this.typeDebounceTimer = null;
+    }
   }
 
   /**

@@ -1,20 +1,21 @@
 import { useCallback, useState } from 'react';
 
-import { ArrowLeft, ArrowRight, RotateCw, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Pause, Play, RotateCw, ShieldCheck } from 'lucide-react';
 
 import { wsClient } from '@/lib/ws';
 import { useSessionStore } from '@/stores/sessionStore';
-;
 
 export function Toolbar() {
   const sessionState = useSessionStore((s) => s.sessionState);
   const isConnected = useSessionStore((s) => s.isConnected);
   const stepHighlightColor = useSessionStore((s) => s.stepHighlightColor);
   const setStepHighlightColor = useSessionStore((s) => s.setStepHighlightColor);
+  const setRecordingPaused = useSessionStore((s) => s.setRecordingPaused);
   const [urlInput, setUrlInput] = useState('');
   const [isUrlInputDirty, setIsUrlInputDirty] = useState(false);
   const [isNavigating, setIsNavigating] = useState(false);
   const displayedUrl = isUrlInputDirty ? urlInput : (sessionState?.url ?? '');
+  const isRecordingPaused = sessionState?.recordingPaused ?? false;
 
   const handleNavigate = useCallback(() => {
     const rawUrl = isUrlInputDirty ? urlInput : (sessionState?.url ?? '');
@@ -54,6 +55,10 @@ export function Toolbar() {
     wsClient.reload();
     setTimeout(() => setIsNavigating(false), 1200);
   }, []);
+
+  const handleToggleRecording = useCallback(() => {
+    void setRecordingPaused(!isRecordingPaused);
+  }, [isRecordingPaused, setRecordingPaused]);
 
   return (
     <div className="h-16 bg-[#FDF2E9]/60 backdrop-blur-md border-b border-black/5 flex items-center px-6 space-x-6">
@@ -104,6 +109,19 @@ export function Toolbar() {
 
       {/* Viewport Dimensions */}
       <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={handleToggleRecording}
+          disabled={!isConnected}
+          className={`flex items-center gap-2 rounded-full border px-3 py-2 text-[10px] font-black uppercase tracking-wider transition-all disabled:opacity-50 ${
+            isRecordingPaused
+              ? 'border-[#E67E22]/30 bg-[#FFF3E8] text-[#E67E22]'
+              : 'border-[#2D241E]/10 bg-white text-[#2D241E]'
+          }`}
+        >
+          {isRecordingPaused ? <Play size={12} fill="currentColor" /> : <Pause size={12} fill="currentColor" />}
+          <span>{isRecordingPaused ? 'Resume Recording' : 'Pause Recording'}</span>
+        </button>
         <span className="text-[10px] font-black uppercase tracking-wider text-[#BBAFA7]">
           Highlight
         </span>

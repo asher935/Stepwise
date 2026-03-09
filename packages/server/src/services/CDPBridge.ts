@@ -1,4 +1,5 @@
-import type { Page, CDPSession, FileChooser } from 'playwright-core';
+import type { Page, CDPSession, FileChooser, JSHandle, ElementHandle } from 'playwright-core';
+import sharp from 'sharp';
 import type { ServerSession } from '../types/session.js';
 import { env } from '../lib/env.js';
 import { sessionManager } from './SessionManager.js';
@@ -134,6 +135,12 @@ interface UploadFile {
   name: string;
   mimeType: string;
   buffer: Buffer;
+}
+
+interface FullPageMetrics {
+  viewportHeight: number;
+  pageHeight: number;
+  hasNestedScrollableContent: boolean;
 }
 
 function createCDPError(code: string, message: string, context?: Record<string, unknown>, originalError?: Error): CDPError {
@@ -837,19 +844,19 @@ export class CDPBridge {
       return;
     }
 
-    const setFilesOnHandle = async (handle: Awaited<ReturnType<Page['evaluateHandle']>>): Promise<boolean> => {
+    const setFilesOnHandle = async (handle: JSHandle<HTMLInputElement | null> | null): Promise<boolean> => {
       if (handle === null) {
         return false;
       }
 
-      const element = handle.asElement();
-      if (!element) {
+      const elementHandle = handle.asElement() as ElementHandle<HTMLInputElement> | null;
+      if (!elementHandle) {
         await handle.dispose();
         return false;
       }
 
       try {
-        await element.setInputFiles({
+        await elementHandle.setInputFiles({
           name: file.name,
           mimeType: file.mimeType,
           buffer: file.buffer,
@@ -962,6 +969,10 @@ export class CDPBridge {
     clip?: { x: number; y: number; width: number; height: number },
     fullPage: boolean = false
   ): Promise<Buffer> {
+    if (!clip && fullPage) {
+      return await this.takeFullPageScreenshot();
+    }
+
     const options: {
       type: 'png' | 'jpeg';
       quality?: number;
@@ -973,8 +984,6 @@ export class CDPBridge {
 
     if (clip) {
       options.clip = clip;
-    } else if (fullPage) {
-      options.fullPage = true;
     }
 
     // JPEG quality setting only applies to JPEG format
@@ -985,17 +994,211 @@ export class CDPBridge {
     return await this.page.screenshot(options);
   }
 
+  private async takeFullPageScreenshot(): Promise<Buffer> {
+    const initialMetrics = await this.getFullPageMetrics();
+    const screenshot = await this.page.screenshot(this.getFullPageScreenshotOptions());
+
+    if (!(await this.shouldRetryFullPageCapture(screenshot, initialMetrics))) {
+      return screenshot;
+    }
+
+    const fallbackScreenshot = await this.takeExpandedFullPageScreenshot();
+    if (!fallbackScreenshot) {
+      return screenshot;
+    }
+
+    const fallbackMetrics = await this.getFullPageMetrics();
+    if (await this.shouldRetryFullPageCapture(fallbackScreenshot, fallbackMetrics)) {
+      return screenshot;
+    }
+
+    return fallbackScreenshot;
+  }
+
+  private getFullPageScreenshotOptions(): { type: 'png' | 'jpeg'; quality?: number; fullPage: true } {
+    if (env.SCREENSHOT_FORMAT === 'jpeg') {
+      return {
+        type: 'jpeg',
+        quality: env.SCREENSHOT_QUALITY,
+        fullPage: true,
+      };
+    }
+
+    return {
+      type: 'png',
+      fullPage: true,
+    };
+  }
+
+  private async getFullPageMetrics(): Promise<FullPageMetrics> {
+    return await this.page.evaluate(() => {
+      const doc = document.documentElement;
+      const body = document.body;
+      const pageHeight = Math.max(
+        doc.scrollHeight,
+        doc.offsetHeight,
+        doc.clientHeight,
+        body?.scrollHeight ?? 0,
+        body?.offsetHeight ?? 0,
+        body?.clientHeight ?? 0,
+      );
+
+      let hasNestedScrollableContent = false;
+      const elements = document.body?.querySelectorAll<HTMLElement>('*') ?? [];
+      for (const element of elements) {
+        const style = window.getComputedStyle(element);
+        const overflowY = style.overflowY;
+        if (!['auto', 'scroll', 'overlay'].includes(overflowY)) {
+          continue;
+        }
+        if (element.scrollHeight <= element.clientHeight + 32) {
+          continue;
+        }
+        if (element.clientHeight < 160 || element.clientWidth < 160) {
+          continue;
+        }
+        hasNestedScrollableContent = true;
+        break;
+      }
+
+      return {
+        viewportHeight: window.innerHeight,
+        pageHeight,
+        hasNestedScrollableContent,
+      };
+    });
+  }
+
+  private async shouldRetryFullPageCapture(
+    screenshot: Buffer,
+    metrics: FullPageMetrics
+  ): Promise<boolean> {
+    const metadata = await sharp(screenshot).metadata();
+    const screenshotHeight = metadata.height ?? 0;
+    if (screenshotHeight <= 0) {
+      return false;
+    }
+
+    const tolerance = 32;
+    const isViewportSized = screenshotHeight <= metrics.viewportHeight + tolerance;
+    const pageContinuesBelowViewport = metrics.pageHeight > metrics.viewportHeight + tolerance;
+
+    return isViewportSized && (pageContinuesBelowViewport || metrics.hasNestedScrollableContent);
+  }
+
+  private async takeExpandedFullPageScreenshot(): Promise<Buffer | null> {
+    const prepared = await this.page.evaluate(() => {
+      const state = globalThis as typeof globalThis & {
+        __stepwiseFullPageRestore__?: Array<{ element: HTMLElement; style: string | null }>;
+      };
+
+      if (state.__stepwiseFullPageRestore__) {
+        return false;
+      }
+
+      const restore: Array<{ element: HTMLElement; style: string | null }> = [];
+      const remember = (element: HTMLElement | null): void => {
+        if (!element || restore.some((entry) => entry.element === element)) {
+          return;
+        }
+        restore.push({
+          element,
+          style: element.getAttribute('style'),
+        });
+      };
+
+      const doc = document.documentElement;
+      const body = document.body;
+
+      remember(doc);
+      if (body) {
+        remember(body);
+      }
+
+      doc.style.setProperty('height', 'auto', 'important');
+      doc.style.setProperty('max-height', 'none', 'important');
+      doc.style.setProperty('overflow-y', 'visible', 'important');
+
+      if (body) {
+        body.style.setProperty('height', 'auto', 'important');
+        body.style.setProperty('max-height', 'none', 'important');
+        body.style.setProperty('overflow-y', 'visible', 'important');
+      }
+
+      const candidates: HTMLElement[] = [];
+      const elements = document.body?.querySelectorAll<HTMLElement>('*') ?? [];
+      for (const element of elements) {
+        const style = window.getComputedStyle(element);
+        const overflowY = style.overflowY;
+        if (!['auto', 'scroll', 'overlay'].includes(overflowY)) {
+          continue;
+        }
+        if (element.scrollHeight <= element.clientHeight + 32) {
+          continue;
+        }
+        if (element.clientHeight < 160 || element.clientWidth < 160) {
+          continue;
+        }
+        candidates.push(element);
+      }
+
+      candidates
+        .sort((left, right) => (right.scrollHeight * right.clientWidth) - (left.scrollHeight * left.clientWidth))
+        .slice(0, 6)
+        .forEach((element) => {
+          remember(element);
+          element.style.setProperty('height', 'auto', 'important');
+          element.style.setProperty('max-height', 'none', 'important');
+          element.style.setProperty('overflow-y', 'visible', 'important');
+          element.style.setProperty('overflow', 'visible', 'important');
+        });
+
+      state.__stepwiseFullPageRestore__ = restore;
+      return restore.length > 0;
+    });
+
+    if (!prepared) {
+      return null;
+    }
+
+    try {
+      await this.page.waitForTimeout(100);
+      return await this.page.screenshot(this.getFullPageScreenshotOptions());
+    } finally {
+      await this.page.evaluate(() => {
+        const state = globalThis as typeof globalThis & {
+          __stepwiseFullPageRestore__?: Array<{ element: HTMLElement; style: string | null }>;
+        };
+
+        const restore = state.__stepwiseFullPageRestore__ ?? [];
+        for (const entry of restore) {
+          if (entry.style === null) {
+            entry.element.removeAttribute('style');
+          } else {
+            entry.element.setAttribute('style', entry.style);
+          }
+        }
+        delete state.__stepwiseFullPageRestore__;
+      });
+    }
+  }
+
   /**
    * Injects a highlight overlay for an element on the page
    */
-  async injectHighlightOverlay(boundingBox: { x: number; y: number; width: number; height: number }): Promise<void> {
-    await this.page.evaluate(([box, borderColor]) => {
+  async injectHighlightOverlay(
+    boundingBox: { x: number; y: number; width: number; height: number },
+    fullPage: boolean = false
+  ): Promise<void> {
+    await this.page.evaluate(([box, borderColor, isFullPage]) => {
       // Create highlight overlay element
       const overlay = document.createElement('div');
       overlay.id = 'stepwise-highlight-overlay';
-      overlay.style.position = 'fixed';
-      overlay.style.left = `${box.x}px`;
-      overlay.style.top = `${box.y}px`;
+      const x = isFullPage ? window.scrollX + box.x : box.x;
+      const y = isFullPage ? window.scrollY + box.y : box.y;
+      overlay.style.position = isFullPage ? 'absolute' : 'fixed';
+      overlay.style.left = `${x}px`;
+      overlay.style.top = `${y}px`;
       overlay.style.width = `${box.width}px`;
       overlay.style.height = `${box.height}px`;
       overlay.style.border = `3px solid ${borderColor}`;
@@ -1003,7 +1206,7 @@ export class CDPBridge {
       overlay.style.pointerEvents = 'none';
       overlay.style.zIndex = '999999';
       document.body.appendChild(overlay);
-    }, [boundingBox, hexToRgba(this.highlightColor, 0.9)] as const);
+    }, [boundingBox, hexToRgba(this.highlightColor, 0.9), fullPage] as const);
   }
 
   setHighlightColor(color: string): void {
@@ -1037,7 +1240,7 @@ export class CDPBridge {
     clip?: { x: number; y: number; width: number; height: number },
     fullPage: boolean = false
   ): Promise<Buffer> {
-    await this.injectHighlightOverlay(boundingBox);
+    await this.injectHighlightOverlay(boundingBox, fullPage);
 
     // Small delay to ensure the overlay is rendered
     await new Promise(resolve => setTimeout(resolve, 50));
@@ -1102,14 +1305,14 @@ export class CDPBridge {
       clearInterval(this.healthCheckTimer);
     }
 
-    this.healthCheckTimer = setInterval(async () => {
-      if (this.session.status === 'active') {
-        try {
-          await this.validateCDPSession();
-        } catch (error) {
-          console.warn(`[CDP:${this.session.id}] Health check failed:`, error);
-        }
+    this.healthCheckTimer = setInterval(() => {
+      if (this.session.status !== 'active') {
+        return;
       }
+
+      void this.validateCDPSession().catch((error: unknown) => {
+        console.warn(`[CDP:${this.session.id}] Health check failed:`, error);
+      });
     }, this.healthCheckInterval);
   }
 

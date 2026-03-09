@@ -45,6 +45,7 @@ interface SessionStore {
   createSession: () => Promise<void>;
   startSession: (startUrl?: string) => Promise<void>;
   endSession: () => Promise<void>;
+  setRecordingPaused: (paused: boolean) => Promise<void>;
   updateStep: (stepId: string, updates: {
     caption?: string;
     redactScreenshot?: boolean;
@@ -138,6 +139,20 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       if (endError) {
         set({ error: endError });
       }
+    }
+  },
+
+  setRecordingPaused: async (paused: boolean) => {
+    const { sessionId, sessionState } = get();
+    if (!sessionId || !sessionState) return;
+
+    try {
+      const nextState = await api.setRecordingPaused(sessionId, paused);
+      set({ sessionState: nextState, error: null });
+    } catch (error) {
+      set({
+        error: error instanceof Error ? error.message : 'Failed to update recording state'
+      });
     }
   },
 

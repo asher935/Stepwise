@@ -13,7 +13,8 @@ type SessionEventType =
   | 'session:ended'
   | 'session:expiring'
   | 'session:error'
-  | 'session:activity';
+  | 'session:activity'
+  | 'session:updated';
 
 type SessionEventHandler = (sessionId: string, data?: unknown) => void;
 
@@ -31,7 +32,7 @@ export class SessionManager {
    */
   private startCleanupJob(): void {
     this.cleanupInterval = setInterval(() => {
-      this.cleanupIdleSessions();
+      void this.cleanupIdleSessions();
     }, 60_000);
   }
 
@@ -115,6 +116,7 @@ export class SessionManager {
       token,
       status: 'lobby',
       mode: 'record' as const,
+      recordingPaused: false,
       browser: null,
       page: null,
       cdp: null,
@@ -292,6 +294,26 @@ export class SessionManager {
     return session?.mode ?? 'record';
   }
 
+  setRecordingPaused(sessionId: string, paused: boolean): SessionState | null {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      return null;
+    }
+
+    session.recordingPaused = paused;
+    session.lastActivityAt = Date.now();
+    session.lastExpiryWarningAt = null;
+
+    const state = this.getSessionState(sessionId);
+    this.emit('session:updated', sessionId, state);
+    return state;
+  }
+
+  isRecordingPaused(sessionId: string): boolean {
+    const session = this.sessions.get(sessionId);
+    return session?.recordingPaused ?? false;
+  }
+
   /**
    * Toggles redaction for a step
    */
@@ -368,6 +390,7 @@ export class SessionManager {
     return {
       id: session.id,
       status: session.status,
+      recordingPaused: session.recordingPaused,
       url: session.url,
       title: session.title,
       stepCount: session.steps.length,

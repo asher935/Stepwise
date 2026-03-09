@@ -6,6 +6,7 @@ export interface ServerSession {
   token: string;
   status: SessionStatus;
   mode: SessionMode;
+  recordingPaused: boolean;
   browser: Browser | null;
   page: Page | null;
   cdp: CDPSession | null;

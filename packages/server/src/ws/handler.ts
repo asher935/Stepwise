@@ -246,6 +246,15 @@ export function notifySessionExpiring(sessionId: string, remainingMs: number): v
   broadcastToSession(sessionId, { type: 'session:expiring', remainingMs });
 }
 
+export function notifySessionState(sessionId: string): void {
+  const sessionState = sessionManager.getSessionState(sessionId);
+  if (!sessionState) {
+    return;
+  }
+
+  broadcastToSession(sessionId, { type: 'session:state', state: sessionState });
+}
+
 export function getSessionRecorder(sessionId: string): Recorder | null {
   for (const [ws, state] of connections) {
     if (ws.data.sessionId === sessionId && state.recorder) {
@@ -612,6 +621,7 @@ async function handleMouseInput(
   if (!state.bridge || !state.recorder) return;
   const bridge = state.bridge;
   const recorder = state.recorder;
+  const recordingPaused = sessionManager.isRecordingPaused(ws.data.sessionId);
 
   // Rate limit check
   if (!checkRateLimit(state.rateLimit)) {
@@ -663,7 +673,9 @@ async function handleMouseInput(
     await enqueueMouseAction(state, async () => {
       switch (action) {
         case 'down':
-          await recorder.prepareClickScreenshot(x, y, btn);
+          if (!recordingPaused) {
+            await recorder.prepareClickScreenshot(x, y, btn);
+          }
           await bridge.sendMouseInput('down', x, y, btn);
           break;
 
@@ -675,7 +687,9 @@ async function handleMouseInput(
           if (bridge.hasPendingFileChooserAt(x, y)) {
             break;
           }
-          await recorder.recordClick(x, y, btn);
+          if (!recordingPaused) {
+            await recorder.recordClick(x, y, btn);
+          }
           break;
       }
     });
@@ -710,6 +724,7 @@ async function handleKeyboardInput(
   }
 
   if (!state.bridge || !state.recorder) return;
+  const recordingPaused = sessionManager.isRecordingPaused(ws.data.sessionId);
 
   const { action, key, text, modifiers, code, keyCode } = message;
 
@@ -749,7 +764,7 @@ async function handleKeyboardInput(
       const session = sessionManager.getSession(ws.data.sessionId);
       const clipboardText = session ? await getClipboardContent(session) : null;
 
-      if (clipboardText && state.recorder) {
+      if (!recordingPaused && clipboardText && state.recorder) {
         await state.recorder.recordPaste(clipboardText);
       }
     } catch (error) {
@@ -767,7 +782,7 @@ async function handleKeyboardInput(
     if (action === 'down') {
       await state.bridge.sendKeyboardInput('down', key, text, modifiers, code, keyCode);
       // Record typing
-      if (text) {
+      if (!recordingPaused && text) {
         await state.recorder.recordKeyInput(key, text);
       }
     } else if (action === 'up') {
@@ -775,7 +790,7 @@ async function handleKeyboardInput(
     } else if (action === 'press') {
       await state.bridge.sendKeyboardInput('down', key, text, modifiers, code, keyCode);
       await state.bridge.sendKeyboardInput('up', key, undefined, modifiers, code, keyCode);
-      if (text) {
+      if (!recordingPaused && text) {
         await state.recorder.recordKeyInput(key, text);
       }
     }
@@ -802,6 +817,7 @@ async function handleScrollInput(
   }
 
   if (!state.bridge || !state.recorder) return;
+  const recordingPaused = sessionManager.isRecordingPaused(ws.data.sessionId);
 
   const { deltaX, deltaY, x, y } = message;
 
@@ -829,7 +845,9 @@ async function handleScrollInput(
 
   try {
     await state.bridge.scroll(x, y, deltaX, deltaY);
-    await state.recorder.recordScroll(deltaX, deltaY);
+    if (!recordingPaused) {
+      await state.recorder.recordScroll(deltaX, deltaY);
+    }
   } catch (error) {
     send(ws, {
       type: 'input:error',
@@ -848,6 +866,7 @@ async function handleNavigate(
   message: { type: 'navigate'; action: string; url?: string }
 ): Promise<void> {
   if (!state.bridge || !state.recorder) return;
+  const recordingPaused = sessionManager.isRecordingPaused(ws.data.sessionId);
 
   const { action, url } = message;
 
@@ -870,7 +889,9 @@ async function handleNavigate(
       case 'goto':
         if (url) {
           await state.bridge.navigate(url);
-          await state.recorder.recordNavigation(fromUrl, url);
+          if (!recordingPaused) {
+            await state.recorder.recordNavigation(fromUrl, url);
+          }
         }
         break;
 

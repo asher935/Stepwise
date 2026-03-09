@@ -88,6 +88,10 @@ class ApiClient {
     await this.request('POST', `/sessions/${sessionId}/end`);
   }
 
+  async setRecordingPaused(sessionId: string, paused: boolean): Promise<SessionState> {
+    return this.request('POST', `/sessions/${sessionId}/recording`, { paused });
+  }
+
   async getSteps(sessionId: string): Promise<Step[]> {
     return this.request('GET', `/sessions/${sessionId}/steps`);
   }

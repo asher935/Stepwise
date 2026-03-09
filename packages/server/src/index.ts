@@ -10,7 +10,7 @@ import { importRoutes } from './routes/import.js';
 import { sessionRoutes } from './routes/session.js';
 import { sessionManager } from './services/SessionManager.js';
 import type { WSConnection } from './types/session.js';
-import { handleClose, handleMessage, handleOpen, notifySessionEnded, notifySessionExpiring, notifySessionStarted } from './ws/handler.js';
+import { handleClose, handleMessage, handleOpen, notifySessionEnded, notifySessionExpiring, notifySessionStarted, notifySessionState } from './ws/handler.js';
 
 // Server startup information logged via console.warn for development tracking
 console.warn(`[Server] Starting Stepwise server...`);
@@ -137,6 +137,10 @@ sessionManager.on('session:expiring', (sessionId, data) => {
   }
 
   notifySessionExpiring(sessionId, remainingMs);
+});
+
+sessionManager.on('session:updated', (sessionId) => {
+  notifySessionState(sessionId);
 });
 
 async function shutdown(): Promise<void> {

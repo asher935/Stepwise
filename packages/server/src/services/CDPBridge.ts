@@ -143,6 +143,11 @@ interface FullPageMetrics {
   hasNestedScrollableContent: boolean;
 }
 
+export interface PageSnapshot {
+  html: string;
+  viewport: { width: number; height: number };
+}
+
 function createCDPError(code: string, message: string, context?: Record<string, unknown>, originalError?: Error): CDPError {
   return {
     code,
@@ -270,6 +275,90 @@ export class CDPBridge {
       throw new Error('Page not available');
     }
     return this.session.page;
+  }
+
+  async capturePageSnapshot(): Promise<PageSnapshot | null> {
+    return await this.executeWithErrorHandling(
+      () => this.page.evaluate(() => {
+        const clone = document.documentElement.cloneNode(true) as HTMLElement;
+        const liveElements = Array.from(document.documentElement.querySelectorAll('*'));
+        const clonedElements = Array.from(clone.querySelectorAll('*'));
+
+        for (let i = 0; i < liveElements.length; i += 1) {
+          const liveElement = liveElements[i];
+          const clonedElement = clonedElements[i];
+          if (!liveElement || !clonedElement) {
+            continue;
+          }
+
+          if (liveElement instanceof HTMLInputElement && clonedElement instanceof HTMLInputElement) {
+            clonedElement.value = liveElement.value;
+            if (liveElement.value.length > 0) {
+              clonedElement.setAttribute('value', liveElement.value);
+            } else {
+              clonedElement.removeAttribute('value');
+            }
+
+            if (liveElement.checked) {
+              clonedElement.setAttribute('checked', '');
+            } else {
+              clonedElement.removeAttribute('checked');
+            }
+          } else if (liveElement instanceof HTMLTextAreaElement && clonedElement instanceof HTMLTextAreaElement) {
+            clonedElement.value = liveElement.value;
+            clonedElement.textContent = liveElement.value;
+          } else if (liveElement instanceof HTMLSelectElement && clonedElement instanceof HTMLSelectElement) {
+            clonedElement.value = liveElement.value;
+            const liveOptions = Array.from(liveElement.options);
+            const clonedOptions = Array.from(clonedElement.options);
+            for (let optionIndex = 0; optionIndex < liveOptions.length; optionIndex += 1) {
+              const liveOption = liveOptions[optionIndex];
+              const clonedOption = clonedOptions[optionIndex];
+              if (!liveOption || !clonedOption) {
+                continue;
+              }
+
+              clonedOption.selected = liveOption.selected;
+              if (liveOption.selected) {
+                clonedOption.setAttribute('selected', '');
+              } else {
+                clonedOption.removeAttribute('selected');
+              }
+            }
+          } else if (liveElement instanceof HTMLDetailsElement && clonedElement instanceof HTMLDetailsElement) {
+            clonedElement.open = liveElement.open;
+            if (liveElement.open) {
+              clonedElement.setAttribute('open', '');
+            } else {
+              clonedElement.removeAttribute('open');
+            }
+          }
+        }
+
+        clone.querySelectorAll('script').forEach((element) => element.remove());
+
+        const head = clone.querySelector('head') ?? clone.insertBefore(document.createElement('head'), clone.firstChild);
+        const base = document.createElement('base');
+        base.href = window.location.href;
+        head.prepend(base);
+
+        const style = document.createElement('style');
+        style.textContent = `
+          * { animation: none !important; transition: none !important; caret-color: transparent !important; }
+          html, body { scroll-behavior: auto !important; }
+        `;
+        head.append(style);
+
+        return {
+          html: `<!DOCTYPE html>\n${clone.outerHTML}`,
+          viewport: {
+            width: window.innerWidth,
+            height: window.innerHeight,
+          },
+        };
+      }),
+      'capturePageSnapshot'
+    );
   }
 
   private setLastFileChooserTrigger(x: number, y: number): void {
@@ -997,19 +1086,31 @@ export class CDPBridge {
   }
 
   private async takeFullPageScreenshot(): Promise<Buffer> {
+    let metrics: FullPageMetrics | null = null;
+
     try {
-      const cdpScreenshot = await this.takeFullPageScreenshotWithCDP();
-      if (cdpScreenshot) {
-        return cdpScreenshot;
+      metrics = await this.getFullPageMetrics();
+    } catch {
+      metrics = null;
+    }
+
+    try {
+      let screenshot = await this.takeFullPageScreenshotWithCDP();
+      if (!screenshot) {
+        screenshot = await withTimeout(
+          this.page.screenshot(this.getFullPageScreenshotOptions()),
+          this.fullPageScreenshotTimeoutMs
+        );
       }
 
-      return await withTimeout(
-        this.page.screenshot({
-          type: env.SCREENSHOT_FORMAT,
-          ...(env.SCREENSHOT_FORMAT === 'jpeg' ? { quality: env.SCREENSHOT_QUALITY } : {}),
-        }),
-        this.screenshotTimeoutMs
-      );
+      if (metrics && await this.shouldRetryFullPageCapture(screenshot, metrics)) {
+        const expandedScreenshot = await this.takeExpandedFullPageScreenshot();
+        if (expandedScreenshot) {
+          screenshot = expandedScreenshot;
+        }
+      }
+
+      return screenshot;
     } finally {
       await this.restoreViewportAfterFullPageCapture();
     }
@@ -1077,6 +1178,74 @@ export class CDPBridge {
         return Buffer.from(retry.data, 'base64');
       } catch {
         return null;
+      }
+    }
+  }
+
+  async takeSafeFullPageScreenshot(): Promise<Buffer | null> {
+    return await this.takeFullPageScreenshotWithCDP();
+  }
+
+  async takeSafeFullPageScreenshotWithHighlight(
+    boundingBox: { x: number; y: number; width: number; height: number }
+  ): Promise<Buffer | null> {
+    await this.injectHighlightOverlay(boundingBox, true);
+
+    try {
+      await this.page.waitForTimeout(50);
+      return await this.takeFullPageScreenshotWithCDP();
+    } finally {
+      try {
+        await this.removeHighlightOverlay();
+      } catch {
+        void 0;
+      }
+    }
+  }
+
+  async renderPageSnapshotFullPageScreenshot(
+    snapshot: PageSnapshot,
+    highlightBoundingBox?: { x: number; y: number; width: number; height: number }
+  ): Promise<Buffer | null> {
+    let mirrorPage: Page | null = null;
+
+    try {
+      mirrorPage = await this.page.context().newPage();
+      await mirrorPage.setViewportSize(snapshot.viewport);
+      await mirrorPage.setContent(snapshot.html, { waitUntil: 'load' });
+      await mirrorPage.waitForLoadState('networkidle', { timeout: 3000 }).catch(() => undefined);
+
+      if (highlightBoundingBox) {
+        const borderColor = hexToRgba(this.highlightColor, 0.95);
+        const fillColor = hexToRgba(this.highlightColor, 0.14);
+        await mirrorPage.evaluate(([box, lineColor, overlayColor]) => {
+          const overlay = document.createElement('div');
+          overlay.id = 'stepwise-highlight-overlay';
+          overlay.style.position = 'absolute';
+          overlay.style.left = `${box.x}px`;
+          overlay.style.top = `${box.y}px`;
+          overlay.style.width = `${box.width}px`;
+          overlay.style.height = `${box.height}px`;
+          overlay.style.border = `3px solid ${lineColor}`;
+          overlay.style.borderRadius = '4px';
+          overlay.style.background = overlayColor;
+          overlay.style.boxShadow = `0 0 0 2px rgba(255,255,255,0.9), 0 0 0 6px ${overlayColor}`;
+          overlay.style.pointerEvents = 'none';
+          overlay.style.zIndex = '2147483647';
+          overlay.style.boxSizing = 'border-box';
+          (document.body ?? document.documentElement).appendChild(overlay);
+        }, [highlightBoundingBox, borderColor, fillColor] as const);
+      }
+
+      return await withTimeout(
+        mirrorPage.screenshot(this.getFullPageScreenshotOptions()),
+        this.fullPageScreenshotTimeoutMs
+      );
+    } catch {
+      return null;
+    } finally {
+      if (mirrorPage) {
+        await mirrorPage.close().catch(() => undefined);
       }
     }
   }

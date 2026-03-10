@@ -673,12 +673,12 @@ async function handleMouseInput(
     await enqueueMouseAction(state, async () => {
       switch (action) {
         case 'down':
-          await bridge.sendMouseInput('down', x, y, btn);
           if (!recordingPaused) {
-            void recorder.prepareClickScreenshot(x, y, btn).catch((error: unknown) => {
+            await recorder.prepareClickScreenshot(x, y, btn).catch((error: unknown) => {
               console.warn('[WS] Failed to prepare click screenshot:', error);
             });
           }
+          await bridge.sendMouseInput('down', x, y, btn);
           break;
 
         case 'up':

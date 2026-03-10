@@ -2,8 +2,6 @@ import { describe, expect, it } from 'bun:test';
 import { Recorder } from './Recorder.js';
 import { env } from '../lib/env.js';
 import type { ServerSession } from '../types/session.js';
-import type { Step } from '@stepwise/shared';
-import type { PageSnapshot } from './CDPBridge.js';
 
 type ScreenshotClip = { x: number; y: number; width: number; height: number };
 type ElementInfo = {
@@ -24,11 +22,6 @@ type CDPBridgeMock = {
   takeSafeFullPageScreenshot?: () => Promise<Buffer | null>;
   takeSafeFullPageScreenshotWithHighlight?: (
     boundingBox: ScreenshotClip
-  ) => Promise<Buffer | null>;
-  capturePageSnapshot?: () => Promise<PageSnapshot | null>;
-  renderPageSnapshotFullPageScreenshot?: (
-    snapshot: PageSnapshot,
-    highlightBoundingBox?: ScreenshotClip
   ) => Promise<Buffer | null>;
   waitForPageLoad?: () => Promise<void>;
 };
@@ -87,16 +80,11 @@ function createRecorder(cdpBridge: CDPBridgeMock, session: ServerSession = creat
 }
 
 describe('Recorder screenshot variants', () => {
-  it('stores distinct zoomed, viewport, and full-page screenshots for clipped click steps', async () => {
+  it('stores distinct zoomed and viewport screenshots for clipped click steps', async () => {
     const zoomedBuffer = Buffer.from('zoomed');
     const viewportBuffer = Buffer.from('viewport');
-    const fullPageBuffer = Buffer.from('fullpage');
     const clip = { x: 10, y: 20, width: 300, height: 200 };
     const paths: string[] = [];
-    const snapshot: PageSnapshot = {
-      html: '<!DOCTYPE html><html><body><button>Submit</button></body></html>',
-      viewport: { width: 1280, height: 800 },
-    };
 
     const cdpBridge: CDPBridgeMock = {
       getElementAtPoint: async () => ({
@@ -105,27 +93,19 @@ describe('Recorder screenshot variants', () => {
         text: 'Submit',
       }),
       getHighlightColor: () => '#FF0000',
-      takeScreenshot: async (_clip, fullPage) => fullPage ? fullPageBuffer : viewportBuffer,
+      takeScreenshot: async () => viewportBuffer,
       takeScreenshotWithHighlight: async (_boundingBox, currentClip, fullPage) => {
         if (fullPage) {
-          return fullPageBuffer;
+          return viewportBuffer;
         }
         return currentClip ? zoomedBuffer : viewportBuffer;
       },
-      capturePageSnapshot: async () => snapshot,
-      renderPageSnapshotFullPageScreenshot: async (pageSnapshot) => {
-        expect(pageSnapshot).toEqual(snapshot);
-        return fullPageBuffer;
-      },
-      takeSafeFullPageScreenshotWithHighlight: async () => fullPageBuffer,
-      takeSafeFullPageScreenshot: async () => fullPageBuffer,
+      takeSafeFullPageScreenshotWithHighlight: async () => viewportBuffer,
+      takeSafeFullPageScreenshot: async () => viewportBuffer,
       waitForPageLoad: async () => undefined,
     };
 
     const { recorder, session } = createRecorder(cdpBridge);
-    Object.assign(recorder as unknown as { CLICK_FULL_PAGE_IDLE_MS: number }, {
-      CLICK_FULL_PAGE_IDLE_MS: 50,
-    });
     Object.assign(recorder as unknown as RecorderTestHarness, {
       getClipForTarget: async () => clip,
       saveScreenshot: async (screenshotData: Buffer) => {
@@ -135,16 +115,6 @@ describe('Recorder screenshot variants', () => {
       },
     });
 
-    const updatedStepPromise = new Promise<Step>((resolve) => {
-      const handler = (candidate: Step): void => {
-        if (candidate.action !== 'click') {
-          return;
-        }
-        recorder.off('step:updated', handler);
-        resolve(candidate);
-      };
-      recorder.on('step:updated', handler);
-    });
     await recorder.prepareClickScreenshot(150, 180);
     const step = await recorder.recordClick(150, 180);
 
@@ -155,23 +125,18 @@ describe('Recorder screenshot variants', () => {
     expect(step?.pageScreenshotDataUrl).toBeUndefined();
     expect(step?.screenshotPath).toBe('/tmp/1-zoomed.png');
     expect(step?.fullScreenshotPath).toBe('/tmp/2-viewport.png');
-
-    const updatedStep = await updatedStepPromise;
-
-    expect(updatedStep.pageScreenshotDataUrl).toBe(toDataUrl(fullPageBuffer));
-    expect(updatedStep.pageScreenshotPath).toBe('/tmp/3-fullpage.png');
+    expect(step?.pageScreenshotPath).toBeUndefined();
   });
 
-  it('keeps viewport and full-page captures distinct for navigation steps', async () => {
+  it('keeps viewport capture only for navigation steps', async () => {
     const viewportBuffer = Buffer.from('viewport');
-    const fullPageBuffer = Buffer.from('fullpage');
 
     const cdpBridge: CDPBridgeMock = {
       getHighlightColor: () => '#FF0000',
-      takeScreenshot: async (_clip, fullPage) => fullPage ? fullPageBuffer : viewportBuffer,
-      takeScreenshotWithHighlight: async (_boundingBox, _clip, fullPage) => fullPage ? fullPageBuffer : viewportBuffer,
-      takeSafeFullPageScreenshot: async () => fullPageBuffer,
-      takeSafeFullPageScreenshotWithHighlight: async () => fullPageBuffer,
+      takeScreenshot: async () => viewportBuffer,
+      takeScreenshotWithHighlight: async () => viewportBuffer,
+      takeSafeFullPageScreenshot: async () => viewportBuffer,
+      takeSafeFullPageScreenshotWithHighlight: async () => viewportBuffer,
       waitForPageLoad: async () => undefined,
     };
 
@@ -188,6 +153,40 @@ describe('Recorder screenshot variants', () => {
 
     expect(step?.action).toBe('navigate');
     expect(session.steps).toHaveLength(1);
+    expect(step?.screenshotDataUrl).toBe(toDataUrl(viewportBuffer));
+    expect(step?.fullScreenshotDataUrl).toBe(toDataUrl(viewportBuffer));
+    expect(step?.pageScreenshotDataUrl).toBeUndefined();
+    expect(savedBuffers.map((buffer) => buffer.toString('utf8'))).toEqual(['viewport']);
+  });
+
+  it('captures full-page screenshot for insert steps', async () => {
+    const viewportBuffer = Buffer.from('viewport');
+    const fullPageBuffer = Buffer.from('fullpage');
+
+    const cdpBridge: CDPBridgeMock = {
+      getHighlightColor: () => '#FF0000',
+      takeScreenshot: async (_clip, fullPage) => fullPage ? fullPageBuffer : viewportBuffer,
+      takeScreenshotWithHighlight: async (_boundingBox, _clip, fullPage) => fullPage ? fullPageBuffer : viewportBuffer,
+      takeSafeFullPageScreenshot: async () => fullPageBuffer,
+      takeSafeFullPageScreenshotWithHighlight: async () => fullPageBuffer,
+      waitForPageLoad: async () => undefined,
+    };
+
+    const { recorder } = createRecorder(cdpBridge);
+    const savedBuffers: Buffer[] = [];
+    Object.assign(recorder as unknown as RecorderTestHarness & {
+      detectInteractiveElementsOnPage: () => Promise<unknown[]>;
+    }, {
+      detectInteractiveElementsOnPage: async () => [],
+      saveScreenshot: async (screenshotData: Buffer) => {
+        savedBuffers.push(screenshotData);
+        return `/tmp/${savedBuffers.length}.png`;
+      },
+    });
+
+    const step = await recorder.createInsertStepFromCurrentView();
+
+    expect(step?.action).toBe('click');
     expect(step?.screenshotDataUrl).toBe(toDataUrl(viewportBuffer));
     expect(step?.fullScreenshotDataUrl).toBe(toDataUrl(viewportBuffer));
     expect(step?.pageScreenshotDataUrl).toBe(toDataUrl(fullPageBuffer));

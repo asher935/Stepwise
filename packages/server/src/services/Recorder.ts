@@ -3,7 +3,7 @@ import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Step, ClickStep, TypeStep, NavigateStep, ScrollStep, PasteStep, StepHighlight, StepLegendItem } from '@stepwise/shared';
 import type { ServerSession } from '../types/session.js';
-import { CDPBridge, type PageSnapshot } from './CDPBridge.js';
+import { CDPBridge } from './CDPBridge.js';
 import { redactionService } from './RedactionService.js';
 import { createHighlight, inferFieldName, truncateText } from '../lib/selectors.js';
 import { env } from '../lib/env.js';
@@ -64,23 +64,14 @@ export class Recorder {
     screenshotDataUrl: string;
     fullScreenshotPath: string;
     fullScreenshotDataUrl: string;
-    pageSnapshot?: PageSnapshot | null;
-    highlightBoundingBox?: Rect;
-    pageScreenshotPath?: string;
-    pageScreenshotDataUrl?: string;
     elementInfo: ElementInfo | null;
     redactionRects: Rect[];
     clip?: { x: number; y: number; width: number; height: number } | null;
   } | null = null;
   private typeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
-  private clickFullPageCaptureTimer: ReturnType<typeof setTimeout> | null = null;
-  private pendingClickFullPageStepIds: string[] = [];
-  private clickFullPageSnapshots: Map<string, { snapshot: PageSnapshot; highlightBoundingBox?: Rect }> = new Map();
-  private interactionRevision: number = 0;
   private isFinalizing: boolean = false;
   private readonly TYPING_DEBOUNCE_MS = env.TYPING_DEBOUNCE_MS;
   private readonly UPDATE_WINDOW_MS = 5000; // 5 seconds to allow updates to last type step
-  private readonly CLICK_FULL_PAGE_IDLE_MS = 800;
   private lastTypeStep: { step: TypeStep; timestamp: number; fieldName: string } | null = null;
 
   constructor(options: RecorderOptions) {
@@ -126,87 +117,6 @@ export class Recorder {
    */
   private isStepLimitReached(): boolean {
     return this.session.steps.length >= env.MAX_STEPS_PER_SESSION;
-  }
-
-  private markInteractionActivity(): void {
-    this.interactionRevision += 1;
-    if (this.clickFullPageCaptureTimer) {
-      clearTimeout(this.clickFullPageCaptureTimer);
-      this.clickFullPageCaptureTimer = null;
-    }
-  }
-
-  private enqueueClickFullPageCapture(stepId: string): void {
-    this.pendingClickFullPageStepIds = [
-      ...this.pendingClickFullPageStepIds.filter((candidate) => candidate !== stepId),
-      stepId,
-    ];
-
-    const scheduledRevision = this.interactionRevision;
-    this.clickFullPageCaptureTimer = setTimeout(() => {
-      void this.flushPendingClickFullPageCaptures(scheduledRevision).catch((error: unknown) => {
-        console.warn('[Recorder] Failed to finalize click full-page screenshots:', error);
-      });
-    }, this.CLICK_FULL_PAGE_IDLE_MS);
-  }
-
-  private async flushPendingClickFullPageCaptures(scheduledRevision: number): Promise<void> {
-    if (scheduledRevision !== this.interactionRevision) {
-      return;
-    }
-
-    this.clickFullPageCaptureTimer = null;
-    const pendingStepIds = [...this.pendingClickFullPageStepIds];
-    this.pendingClickFullPageStepIds = [];
-
-    for (const stepId of pendingStepIds) {
-      if (scheduledRevision !== this.interactionRevision) {
-        this.pendingClickFullPageStepIds = [
-          stepId,
-          ...pendingStepIds.filter((candidate) => candidate !== stepId),
-          ...this.pendingClickFullPageStepIds,
-        ];
-        this.enqueueClickFullPageCapture(stepId);
-        return;
-      }
-
-      const step = this.session.steps.find((candidate) => candidate.id === stepId);
-      if (!step || step.action !== 'click' || step.pageScreenshotDataUrl) {
-        this.clickFullPageSnapshots.delete(stepId);
-        continue;
-      }
-
-      const snapshotPayload = this.clickFullPageSnapshots.get(stepId);
-      let pageScreenshotData: Buffer | null = null;
-
-      if (snapshotPayload) {
-        pageScreenshotData = await this.cdpBridge.renderPageSnapshotFullPageScreenshot(
-          snapshotPayload.snapshot,
-          snapshotPayload.highlightBoundingBox ?? step.target.boundingBox
-        );
-      } else {
-        await this.cdpBridge.waitForPageLoad();
-        if (scheduledRevision !== this.interactionRevision) {
-          this.pendingClickFullPageStepIds = [
-            stepId,
-            ...this.pendingClickFullPageStepIds,
-          ];
-          this.enqueueClickFullPageCapture(stepId);
-          return;
-        }
-
-        pageScreenshotData = await this.captureFullPageScreenshot(0, undefined, false);
-      }
-
-      this.clickFullPageSnapshots.delete(stepId);
-      if (!pageScreenshotData) {
-        continue;
-      }
-
-      step.pageScreenshotPath = await this.saveScreenshot(pageScreenshotData);
-      step.pageScreenshotDataUrl = this.toScreenshotDataUrl(pageScreenshotData);
-      this.emit('step:updated', step);
-    }
   }
 
   /**
@@ -328,7 +238,6 @@ export class Recorder {
   }
 
   async createInsertStepFromCurrentView(): Promise<ClickStep | null> {
-    this.markInteractionActivity();
     const elements = await this.detectInteractiveElementsOnPage();
     const legendItems = this.buildLegendItems(elements.filter((element) => element.inViewport));
     const pageLegendItems = this.buildLegendItems(elements);
@@ -832,7 +741,6 @@ export class Recorder {
   ): Promise<void> {
     if (this.session.recordingPaused) return;
     if (this.isStepLimitReached()) return;
-    this.markInteractionActivity();
 
     try {
       await this.flushPendingTypeStep();
@@ -846,7 +754,6 @@ export class Recorder {
       const highlightBoundingBox = elementInfo?.boundingBox && elementInfo.boundingBox.width > 0 && elementInfo.boundingBox.height > 0
         ? elementInfo.boundingBox
         : undefined;
-      const pageSnapshot = await this.cdpBridge.capturePageSnapshot();
 
       const { screenshotData, redactionRects } = await this.captureScreenshot(
         0,
@@ -870,8 +777,6 @@ export class Recorder {
         screenshotDataUrl,
         fullScreenshotPath: viewportScreenshotPath,
         fullScreenshotDataUrl: viewportScreenshotDataUrl,
-        pageSnapshot,
-        highlightBoundingBox,
         elementInfo,
         redactionRects,
         clip
@@ -892,7 +797,6 @@ export class Recorder {
   ): Promise<Step | null> {
     if (this.session.recordingPaused) return null;
     if (this.isStepLimitReached()) return null;
-    this.markInteractionActivity();
 
     // Flush any pending scroll step first (in case prepareClickScreenshot wasn't called)
     await this.flushPendingScrollStep();
@@ -904,10 +808,6 @@ export class Recorder {
     let screenshotDataUrl: string;
     let fullScreenshotPath: string;
     let fullScreenshotDataUrl: string;
-    let pageScreenshotPath: string | undefined;
-    let pageScreenshotDataUrl: string | undefined;
-    let pageSnapshot: PageSnapshot | null | undefined;
-    let highlightBoundingBox: Rect | undefined;
     let elementInfo: ElementInfo | null;
     let redactionRects: Rect[];
     let clip: { x: number; y: number; width: number; height: number } | null;
@@ -922,10 +822,6 @@ export class Recorder {
       screenshotDataUrl = pending.screenshotDataUrl;
       fullScreenshotPath = pending.fullScreenshotPath;
       fullScreenshotDataUrl = pending.fullScreenshotDataUrl;
-      pageSnapshot = pending.pageSnapshot;
-      highlightBoundingBox = pending.highlightBoundingBox;
-      pageScreenshotPath = pending.pageScreenshotPath;
-      pageScreenshotDataUrl = pending.pageScreenshotDataUrl;
       elementInfo = pending.elementInfo;
       redactionRects = pending.redactionRects;
       clip = pending.clip ?? null;
@@ -941,7 +837,7 @@ export class Recorder {
         elementInfo?.boundingBox ?? null,
         { x, y }
       );
-      highlightBoundingBox = elementInfo?.boundingBox && elementInfo.boundingBox.width > 0 && elementInfo.boundingBox.height > 0
+      const highlightBoundingBox = elementInfo?.boundingBox && elementInfo.boundingBox.width > 0 && elementInfo.boundingBox.height > 0
         ? elementInfo.boundingBox
         : undefined;
 
@@ -959,9 +855,6 @@ export class Recorder {
         : screenshotData;
       fullScreenshotPath = clip ? await this.saveScreenshot(viewportScreenshotData) : screenshotPath;
       fullScreenshotDataUrl = clip ? this.toScreenshotDataUrl(viewportScreenshotData) : screenshotDataUrl;
-      pageScreenshotPath = undefined;
-      pageScreenshotDataUrl = undefined;
-      pageSnapshot = null;
     }
 
     // Create highlight
@@ -983,9 +876,7 @@ export class Recorder {
         screenshotDataUrl,
         clip ?? undefined,
         fullScreenshotPath,
-        fullScreenshotDataUrl,
-        pageScreenshotPath,
-        pageScreenshotDataUrl
+        fullScreenshotDataUrl
       ),
       action: 'click',
       target,
@@ -995,14 +886,7 @@ export class Recorder {
     };
 
     this.session.steps.push(step);
-    if (pageSnapshot) {
-      this.clickFullPageSnapshots.set(step.id, {
-        snapshot: pageSnapshot,
-        highlightBoundingBox,
-      });
-    }
     this.emit('step:created', step);
-    this.enqueueClickFullPageCapture(step.id);
 
     return step;
   }
@@ -1013,7 +897,6 @@ export class Recorder {
   async recordKeyInput(key: string, text?: string): Promise<void> {
     if (this.session.recordingPaused) return;
     if (this.isStepLimitReached()) return;
-    this.markInteractionActivity();
 
     // If finalizing, skip this keystroke to avoid race conditions
     if (this.isFinalizing) {
@@ -1151,8 +1034,6 @@ export class Recorder {
         : null;
       const fullScreenshotData = viewportCapture?.screenshotData ?? screenshotData;
       const fullScreenshotPath = step.screenshotClip ? await this.saveScreenshot(fullScreenshotData) : screenshotPath;
-      const pageScreenshotData = await this.captureFullPageScreenshot(0, highlightBoundingBox);
-      const pageScreenshotPath = pageScreenshotData ? await this.saveScreenshot(pageScreenshotData) : undefined;
 
       // Redact if needed
       let finalScreenshotData = screenshotData;
@@ -1168,8 +1049,6 @@ export class Recorder {
       step.screenshotDataUrl = screenshotDataUrl;
       step.fullScreenshotPath = fullScreenshotPath;
       step.fullScreenshotDataUrl = fullScreenshotDataUrl;
-      step.pageScreenshotPath = pageScreenshotPath;
-      step.pageScreenshotDataUrl = pageScreenshotData ? this.toScreenshotDataUrl(pageScreenshotData) : undefined;
       step.redactionRects = capture.redactionRects;
 
       // Move accumulated text to rawValue
@@ -1263,8 +1142,6 @@ export class Recorder {
         : null;
       const fullScreenshotData = viewportCapture?.screenshotData ?? screenshotData;
       const fullScreenshotPath = clip ? await this.saveScreenshot(fullScreenshotData) : screenshotPath;
-      const pageScreenshotData = await this.captureFullPageScreenshot(0, highlightBoundingBox);
-      const pageScreenshotPath = pageScreenshotData ? await this.saveScreenshot(pageScreenshotData) : undefined;
 
       // Redact if needed
       let finalScreenshotData = screenshotData;
@@ -1277,8 +1154,6 @@ export class Recorder {
       step.screenshotDataUrl = this.toScreenshotDataUrl(finalScreenshotData);
       step.fullScreenshotPath = fullScreenshotPath;
       step.fullScreenshotDataUrl = this.toScreenshotDataUrl(fullScreenshotData);
-      step.pageScreenshotPath = pageScreenshotPath;
-      step.pageScreenshotDataUrl = pageScreenshotData ? this.toScreenshotDataUrl(pageScreenshotData) : undefined;
       step.redactionRects = capture.redactionRects;
       if (step.redactScreenshot) {
         step.originalScreenshotDataUrl = this.toScreenshotDataUrl(screenshotData);
@@ -1308,7 +1183,6 @@ export class Recorder {
   async recordNavigation(fromUrl: string, toUrl: string): Promise<Step | null> {
     if (this.session.recordingPaused) return null;
     if (this.isStepLimitReached()) return null;
-    this.markInteractionActivity();
 
     // Flush any pending type or scroll steps
     await this.flushPendingTypeStep();
@@ -1321,9 +1195,6 @@ export class Recorder {
     const { screenshotData, redactionRects } = await this.captureScreenshot();
     const screenshotPath = await this.saveScreenshot(screenshotData);
     const screenshotDataUrl = this.toScreenshotDataUrl(screenshotData);
-    const pageScreenshotData = await this.captureFullPageScreenshot(0);
-    const pageScreenshotPath = pageScreenshotData ? await this.saveScreenshot(pageScreenshotData) : undefined;
-    const pageScreenshotDataUrl = pageScreenshotData ? this.toScreenshotDataUrl(pageScreenshotData) : undefined;
 
     const step: NavigateStep = {
       ...this.createBaseStep(
@@ -1331,9 +1202,7 @@ export class Recorder {
         screenshotDataUrl,
         undefined,
         screenshotPath,
-        screenshotDataUrl,
-        pageScreenshotPath,
-        pageScreenshotDataUrl
+        screenshotDataUrl
       ),
       action: 'navigate',
       fromUrl,
@@ -1354,7 +1223,6 @@ export class Recorder {
   async recordScroll(deltaX: number, deltaY: number): Promise<void> {
     if (this.session.recordingPaused) return;
     if (this.isStepLimitReached()) return;
-    this.markInteractionActivity();
 
     const now = Date.now();
 
@@ -1403,9 +1271,6 @@ export class Recorder {
     const { screenshotData, redactionRects } = await this.captureScreenshot(100);
     const screenshotPath = await this.saveScreenshot(screenshotData);
     const screenshotDataUrl = this.toScreenshotDataUrl(screenshotData);
-    const pageScreenshotData = await this.captureFullPageScreenshot(0);
-    const pageScreenshotPath = pageScreenshotData ? await this.saveScreenshot(pageScreenshotData) : undefined;
-    const pageScreenshotDataUrl = pageScreenshotData ? this.toScreenshotDataUrl(pageScreenshotData) : undefined;
 
     const step: ScrollStep = {
       ...this.createBaseStep(
@@ -1413,9 +1278,7 @@ export class Recorder {
         screenshotDataUrl,
         undefined,
         screenshotPath,
-        screenshotDataUrl,
-        pageScreenshotPath,
-        pageScreenshotDataUrl
+        screenshotDataUrl
       ),
       action: 'scroll',
       direction,
@@ -1435,7 +1298,6 @@ export class Recorder {
   async recordPaste(text: string): Promise<void> {
     if (this.session.recordingPaused) return;
     if (this.isStepLimitReached()) return;
-    this.markInteractionActivity();
 
     // Flush any pending type or scroll steps
     await this.flushPendingTypeStep();
@@ -1487,9 +1349,6 @@ export class Recorder {
     const fullScreenshotData = viewportCapture?.screenshotData ?? screenshotData;
     const fullScreenshotPath = clip ? await this.saveScreenshot(fullScreenshotData) : screenshotPath;
     const fullScreenshotDataUrl = clip ? this.toScreenshotDataUrl(fullScreenshotData) : screenshotDataUrl;
-    const pageScreenshotData = await this.captureFullPageScreenshot(0, highlightBoundingBox);
-    const pageScreenshotPath = pageScreenshotData ? await this.saveScreenshot(pageScreenshotData) : undefined;
-    const pageScreenshotDataUrl = pageScreenshotData ? this.toScreenshotDataUrl(pageScreenshotData) : undefined;
 
     // Check if should redact
     const redactScreenshot = this.shouldRedactPaste(text, fieldName);
@@ -1506,9 +1365,7 @@ export class Recorder {
         screenshotDataUrl,
         clip ?? undefined,
         fullScreenshotPath,
-        fullScreenshotDataUrl,
-        pageScreenshotPath,
-        pageScreenshotDataUrl
+        fullScreenshotDataUrl
       ),
       action: 'paste',
       target,
@@ -1559,8 +1416,6 @@ export class Recorder {
     }
 
     if (deleted) {
-      this.pendingClickFullPageStepIds = this.pendingClickFullPageStepIds.filter((candidate) => candidate !== deleted.id);
-      this.clickFullPageSnapshots.delete(deleted.id);
       this.emit('step:deleted', deleted);
     }
 
@@ -1735,17 +1590,10 @@ export class Recorder {
     this.pendingScrollData = null;
     this.pendingTypeStep = null;
     this.lastTypeStep = null;
-    this.pendingClickFullPageStepIds = [];
-    this.clickFullPageSnapshots.clear();
 
     if (this.typeDebounceTimer) {
       clearTimeout(this.typeDebounceTimer);
       this.typeDebounceTimer = null;
-    }
-
-    if (this.clickFullPageCaptureTimer) {
-      clearTimeout(this.clickFullPageCaptureTimer);
-      this.clickFullPageCaptureTimer = null;
     }
   }
 
@@ -1756,18 +1604,11 @@ export class Recorder {
     this.pendingClickScreenshot = null;
     this.pendingScrollData = null;
     this.lastTypeStep = null;
-    this.pendingClickFullPageStepIds = [];
-    this.clickFullPageSnapshots.clear();
 
     // Clear debounce timer
     if (this.typeDebounceTimer) {
       clearTimeout(this.typeDebounceTimer);
       this.typeDebounceTimer = null;
-    }
-
-    if (this.clickFullPageCaptureTimer) {
-      clearTimeout(this.clickFullPageCaptureTimer);
-      this.clickFullPageCaptureTimer = null;
     }
 
     await this.flushPendingTypeStep();

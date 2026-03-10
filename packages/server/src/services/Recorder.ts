@@ -471,7 +471,7 @@ export class Recorder {
     try {
       const rawElements = await page.evaluate(() => {
         const candidates = Array.from(document.querySelectorAll(
-          'input, textarea, select, button, a[href], [role="button"], [role="link"], [role="textbox"], [role="searchbox"], [role="combobox"]'
+          'input, textarea, select, button, a[href], summary, [role="button"], [role="link"], [role="textbox"], [role="searchbox"], [role="combobox"], [role="spinbutton"], [role="checkbox"], [role="radio"], [role="switch"], [role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"], [role="option"], [role="tab"]'
         ));
         const seen = new Set<string>();
         const result: Array<{
@@ -521,14 +521,86 @@ export class Recorder {
 
         const isFieldElement = (el: Element): boolean => {
           const tagName = el.tagName.toLowerCase();
-          if (tagName === 'input' || tagName === 'textarea' || tagName === 'select') return true;
+          if (tagName === 'input') {
+            const input = el as HTMLInputElement;
+            const type = (input.type || 'text').toLowerCase();
+            return !['button', 'submit', 'reset', 'image', 'checkbox', 'radio', 'range', 'color', 'file'].includes(type);
+          }
+          if (tagName === 'textarea' || tagName === 'select') return true;
           const role = (el.getAttribute('role') || '').toLowerCase();
-          return role === 'textbox' || role === 'searchbox' || role === 'combobox';
+          return role === 'textbox' || role === 'searchbox' || role === 'combobox' || role === 'spinbutton';
         };
 
         const shouldSkipInput = (el: HTMLInputElement): boolean => {
           const type = (el.type || 'text').toLowerCase();
-          return ['hidden', 'checkbox', 'radio', 'range', 'color', 'file', 'image'].includes(type);
+          return type === 'hidden';
+        };
+
+        const getRoundedRect = (el: Element): { x: number; y: number; width: number; height: number } | null => {
+          const rect = el.getBoundingClientRect();
+          if (rect.width < 2 || rect.height < 2) {
+            return null;
+          }
+
+          const style = window.getComputedStyle(el as HTMLElement);
+          if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) {
+            return null;
+          }
+
+          return {
+            x: Math.max(0, Math.round(rect.x + window.scrollX)),
+            y: Math.max(0, Math.round(rect.y + window.scrollY)),
+            width: Math.round(rect.width),
+            height: Math.round(rect.height),
+          };
+        };
+
+        const resolveInputProxyElement = (el: HTMLInputElement): Element => {
+          const type = (el.type || 'text').toLowerCase();
+          if (type !== 'checkbox' && type !== 'radio') {
+            return el;
+          }
+
+          if (getRoundedRect(el)) {
+            return el;
+          }
+
+          const candidates = new Set<Element>();
+          const labels = Array.from(el.labels ?? []);
+          for (const label of labels) {
+            candidates.add(label);
+          }
+
+          const closestLabel = el.closest('label');
+          if (closestLabel) {
+            candidates.add(closestLabel);
+          }
+
+          if (el.id) {
+            try {
+              const forLabel = document.querySelector(`label[for="${CSS.escape(el.id)}"]`);
+              if (forLabel) {
+                candidates.add(forLabel);
+              }
+            } catch {}
+          }
+
+          const parent = el.parentElement;
+          if (parent) {
+            candidates.add(parent);
+            const role = (parent.getAttribute('role') || '').toLowerCase();
+            if (role === 'checkbox' || role === 'radio' || role === 'switch') {
+              candidates.add(parent);
+            }
+          }
+
+          for (const candidate of candidates) {
+            if (getRoundedRect(candidate)) {
+              return candidate;
+            }
+          }
+
+          return el;
         };
 
         for (const element of candidates) {
@@ -536,13 +608,12 @@ export class Recorder {
             continue;
           }
 
-          const rect = element.getBoundingClientRect();
-          if (rect.width < 2 || rect.height < 2) {
-            continue;
-          }
-
-          const style = window.getComputedStyle(element as HTMLElement);
-          if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) {
+          const targetElement = element instanceof HTMLInputElement
+            ? resolveInputProxyElement(element)
+            : element;
+          const rect = targetElement.getBoundingClientRect();
+          const rounded = getRoundedRect(targetElement);
+          if (!rounded) {
             continue;
           }
 
@@ -553,14 +624,7 @@ export class Recorder {
             rect.left >= window.innerWidth
           );
 
-          const rounded = {
-            x: Math.max(0, Math.round(rect.x + window.scrollX)),
-            y: Math.max(0, Math.round(rect.y + window.scrollY)),
-            width: Math.round(rect.width),
-            height: Math.round(rect.height),
-          };
-
-          const label = getLabelText(element);
+          const label = getLabelText(element) || getLabelText(targetElement);
           const kind = isFieldElement(element) ? 'field' : 'button';
           const key = `${kind}:${label.toLowerCase()}:${rounded.x}:${rounded.y}:${rounded.width}:${rounded.height}`;
           if (seen.has(key)) {

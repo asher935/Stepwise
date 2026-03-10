@@ -997,27 +997,88 @@ export class CDPBridge {
   }
 
   private async takeFullPageScreenshot(): Promise<Buffer> {
-    const initialMetrics = await this.getFullPageMetrics();
-    const screenshot = await withTimeout(
-      this.page.screenshot(this.getFullPageScreenshotOptions()),
-      this.fullPageScreenshotTimeoutMs
-    );
+    try {
+      const cdpScreenshot = await this.takeFullPageScreenshotWithCDP();
+      if (cdpScreenshot) {
+        return cdpScreenshot;
+      }
 
-    if (!(await this.shouldRetryFullPageCapture(screenshot, initialMetrics))) {
-      return screenshot;
+      return await withTimeout(
+        this.page.screenshot({
+          type: env.SCREENSHOT_FORMAT,
+          ...(env.SCREENSHOT_FORMAT === 'jpeg' ? { quality: env.SCREENSHOT_QUALITY } : {}),
+        }),
+        this.screenshotTimeoutMs
+      );
+    } finally {
+      await this.restoreViewportAfterFullPageCapture();
     }
+  }
 
-    const fallbackScreenshot = await this.takeExpandedFullPageScreenshot();
-    if (!fallbackScreenshot) {
-      return screenshot;
+  private async restoreViewportAfterFullPageCapture(): Promise<void> {
+    await this.cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 1 }).catch(() => undefined);
+    await this.cdp.send('Emulation.setDeviceMetricsOverride', {
+      width: env.BROWSER_VIEWPORT_WIDTH,
+      height: env.BROWSER_VIEWPORT_HEIGHT,
+      deviceScaleFactor: 1,
+      mobile: false,
+      scale: 1,
+      screenWidth: env.BROWSER_VIEWPORT_WIDTH,
+      screenHeight: env.BROWSER_VIEWPORT_HEIGHT,
+      screenOrientation: {
+        type: 'portraitPrimary',
+        angle: 0,
+      },
+    }).catch(() => undefined);
+    await this.page.setViewportSize({
+      width: env.BROWSER_VIEWPORT_WIDTH,
+      height: env.BROWSER_VIEWPORT_HEIGHT,
+    }).catch(() => undefined);
+  }
+
+  private async takeFullPageScreenshotWithCDP(): Promise<Buffer | null> {
+    try {
+      const metrics = await this.cdp.send('Page.getLayoutMetrics') as {
+        contentSize?: { width?: number; height?: number };
+      };
+      const width = Math.max(1, Math.ceil(metrics.contentSize?.width ?? 0));
+      const height = Math.max(1, Math.ceil(metrics.contentSize?.height ?? 0));
+      if (width <= 1 || height <= 1) {
+        return null;
+      }
+
+      const maxDimension = 16000;
+      const scale = Math.min(1, maxDimension / Math.max(width, height));
+
+      const result = await this.cdp.send('Page.captureScreenshot', {
+        format: env.SCREENSHOT_FORMAT === 'jpeg' ? 'jpeg' : 'png',
+        ...(env.SCREENSHOT_FORMAT === 'jpeg' ? { quality: env.SCREENSHOT_QUALITY } : {}),
+        fromSurface: true,
+        captureBeyondViewport: true,
+        clip: { x: 0, y: 0, width, height, scale },
+      }) as { data?: string };
+
+      if (!result.data) {
+        return null;
+      }
+
+      return Buffer.from(result.data, 'base64');
+    } catch {
+      try {
+        const retry = await this.cdp.send('Page.captureScreenshot', {
+          format: env.SCREENSHOT_FORMAT === 'jpeg' ? 'jpeg' : 'png',
+          ...(env.SCREENSHOT_FORMAT === 'jpeg' ? { quality: env.SCREENSHOT_QUALITY } : {}),
+          fromSurface: true,
+          captureBeyondViewport: true,
+        }) as { data?: string };
+        if (!retry.data) {
+          return null;
+        }
+        return Buffer.from(retry.data, 'base64');
+      } catch {
+        return null;
+      }
     }
-
-    const fallbackMetrics = await this.getFullPageMetrics();
-    if (await this.shouldRetryFullPageCapture(fallbackScreenshot, fallbackMetrics)) {
-      return screenshot;
-    }
-
-    return fallbackScreenshot;
   }
 
   private getFullPageScreenshotOptions(): { type: 'png' | 'jpeg'; quality?: number; fullPage: true } {

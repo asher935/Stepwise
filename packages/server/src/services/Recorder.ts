@@ -64,8 +64,8 @@ export class Recorder {
     screenshotDataUrl: string;
     fullScreenshotPath: string;
     fullScreenshotDataUrl: string;
-    pageScreenshotPath: string;
-    pageScreenshotDataUrl: string;
+    pageScreenshotPath?: string;
+    pageScreenshotDataUrl?: string;
     elementInfo: ElementInfo | null;
     redactionRects: Rect[];
     clip?: { x: number; y: number; width: number; height: number } | null;
@@ -166,7 +166,11 @@ export class Recorder {
   private async captureFullPageScreenshot(
     delay: number = 0,
     highlightBoundingBox?: { x: number; y: number; width: number; height: number }
-  ): Promise<Buffer> {
+  ): Promise<Buffer | null> {
+    if (!env.CAPTURE_FULL_PAGE_SCREENSHOTS) {
+      return null;
+    }
+
     if (delay > 0) {
       await new Promise(resolve => setTimeout(resolve, delay));
     }
@@ -234,8 +238,8 @@ export class Recorder {
     const screenshotPath = await this.saveScreenshot(capture.screenshotData);
     const screenshotDataUrl = this.toScreenshotDataUrl(capture.screenshotData);
     const pageScreenshotData = await this.captureFullPageScreenshot(0);
-    const pageScreenshotPath = await this.saveScreenshot(pageScreenshotData);
-    const pageScreenshotDataUrl = this.toScreenshotDataUrl(pageScreenshotData);
+    const pageScreenshotPath = pageScreenshotData ? await this.saveScreenshot(pageScreenshotData) : undefined;
+    const pageScreenshotDataUrl = pageScreenshotData ? this.toScreenshotDataUrl(pageScreenshotData) : undefined;
     const targetLegendItem = legendItems.find((item) => item.semanticKey === 'username')
       ?? legendItems.find((item) => item.semanticKey === 'password')
       ?? legendItems[0]
@@ -687,6 +691,9 @@ export class Recorder {
       );
       const screenshotPath = await this.saveScreenshot(screenshotData);
       const screenshotDataUrl = this.toScreenshotDataUrl(screenshotData);
+      const pageScreenshotData = await this.captureFullPageScreenshot(0, highlightBoundingBox);
+      const pageScreenshotPath = pageScreenshotData ? await this.saveScreenshot(pageScreenshotData) : undefined;
+      const pageScreenshotDataUrl = pageScreenshotData ? this.toScreenshotDataUrl(pageScreenshotData) : undefined;
 
       this.pendingClickScreenshot = {
         x,
@@ -697,8 +704,8 @@ export class Recorder {
         screenshotDataUrl,
         fullScreenshotPath: screenshotPath,
         fullScreenshotDataUrl: screenshotDataUrl,
-        pageScreenshotPath: screenshotPath,
-        pageScreenshotDataUrl: screenshotDataUrl,
+        pageScreenshotPath,
+        pageScreenshotDataUrl,
         elementInfo,
         redactionRects,
         clip
@@ -730,8 +737,8 @@ export class Recorder {
     let screenshotDataUrl: string;
     let fullScreenshotPath: string;
     let fullScreenshotDataUrl: string;
-    let pageScreenshotPath: string;
-    let pageScreenshotDataUrl: string;
+    let pageScreenshotPath: string | undefined;
+    let pageScreenshotDataUrl: string | undefined;
     let elementInfo: ElementInfo | null;
     let redactionRects: Rect[];
     let clip: { x: number; y: number; width: number; height: number } | null;
@@ -751,6 +758,17 @@ export class Recorder {
       elementInfo = pending.elementInfo;
       redactionRects = pending.redactionRects;
       clip = pending.clip ?? null;
+
+      if (env.CAPTURE_FULL_PAGE_SCREENSHOTS && !pageScreenshotDataUrl) {
+        const highlightBoundingBox = elementInfo?.boundingBox && elementInfo.boundingBox.width > 0 && elementInfo.boundingBox.height > 0
+          ? elementInfo.boundingBox
+          : undefined;
+        const pageScreenshotData = await this.captureFullPageScreenshot(0, highlightBoundingBox);
+        if (pageScreenshotData) {
+          pageScreenshotPath = await this.saveScreenshot(pageScreenshotData);
+          pageScreenshotDataUrl = this.toScreenshotDataUrl(pageScreenshotData);
+        }
+      }
 
       // Clear the pending screenshot
       this.pendingClickScreenshot = null;
@@ -778,8 +796,8 @@ export class Recorder {
       screenshotDataUrl = this.toScreenshotDataUrl(screenshotData);
       fullScreenshotPath = screenshotPath;
       fullScreenshotDataUrl = screenshotDataUrl;
-      pageScreenshotPath = screenshotPath;
-      pageScreenshotDataUrl = screenshotDataUrl;
+      pageScreenshotPath = undefined;
+      pageScreenshotDataUrl = undefined;
     }
 
     // Create highlight
@@ -962,7 +980,7 @@ export class Recorder {
       const fullScreenshotData = viewportCapture?.screenshotData ?? screenshotData;
       const fullScreenshotPath = step.screenshotClip ? await this.saveScreenshot(fullScreenshotData) : screenshotPath;
       const pageScreenshotData = await this.captureFullPageScreenshot(0, highlightBoundingBox);
-      const pageScreenshotPath = await this.saveScreenshot(pageScreenshotData);
+      const pageScreenshotPath = pageScreenshotData ? await this.saveScreenshot(pageScreenshotData) : undefined;
 
       // Redact if needed
       let finalScreenshotData = screenshotData;
@@ -979,7 +997,7 @@ export class Recorder {
       step.fullScreenshotPath = fullScreenshotPath;
       step.fullScreenshotDataUrl = fullScreenshotDataUrl;
       step.pageScreenshotPath = pageScreenshotPath;
-      step.pageScreenshotDataUrl = this.toScreenshotDataUrl(pageScreenshotData);
+      step.pageScreenshotDataUrl = pageScreenshotData ? this.toScreenshotDataUrl(pageScreenshotData) : undefined;
       step.redactionRects = capture.redactionRects;
 
       // Move accumulated text to rawValue
@@ -1074,7 +1092,7 @@ export class Recorder {
       const fullScreenshotData = viewportCapture?.screenshotData ?? screenshotData;
       const fullScreenshotPath = clip ? await this.saveScreenshot(fullScreenshotData) : screenshotPath;
       const pageScreenshotData = await this.captureFullPageScreenshot(0, highlightBoundingBox);
-      const pageScreenshotPath = await this.saveScreenshot(pageScreenshotData);
+      const pageScreenshotPath = pageScreenshotData ? await this.saveScreenshot(pageScreenshotData) : undefined;
 
       // Redact if needed
       let finalScreenshotData = screenshotData;
@@ -1088,7 +1106,7 @@ export class Recorder {
       step.fullScreenshotPath = fullScreenshotPath;
       step.fullScreenshotDataUrl = this.toScreenshotDataUrl(fullScreenshotData);
       step.pageScreenshotPath = pageScreenshotPath;
-      step.pageScreenshotDataUrl = this.toScreenshotDataUrl(pageScreenshotData);
+      step.pageScreenshotDataUrl = pageScreenshotData ? this.toScreenshotDataUrl(pageScreenshotData) : undefined;
       step.redactionRects = capture.redactionRects;
       if (step.redactScreenshot) {
         step.originalScreenshotDataUrl = this.toScreenshotDataUrl(screenshotData);
@@ -1131,8 +1149,8 @@ export class Recorder {
     const screenshotPath = await this.saveScreenshot(screenshotData);
     const screenshotDataUrl = this.toScreenshotDataUrl(screenshotData);
     const pageScreenshotData = await this.captureFullPageScreenshot(0);
-    const pageScreenshotPath = await this.saveScreenshot(pageScreenshotData);
-    const pageScreenshotDataUrl = this.toScreenshotDataUrl(pageScreenshotData);
+    const pageScreenshotPath = pageScreenshotData ? await this.saveScreenshot(pageScreenshotData) : undefined;
+    const pageScreenshotDataUrl = pageScreenshotData ? this.toScreenshotDataUrl(pageScreenshotData) : undefined;
 
     const step: NavigateStep = {
       ...this.createBaseStep(
@@ -1212,8 +1230,8 @@ export class Recorder {
     const screenshotPath = await this.saveScreenshot(screenshotData);
     const screenshotDataUrl = this.toScreenshotDataUrl(screenshotData);
     const pageScreenshotData = await this.captureFullPageScreenshot(0);
-    const pageScreenshotPath = await this.saveScreenshot(pageScreenshotData);
-    const pageScreenshotDataUrl = this.toScreenshotDataUrl(pageScreenshotData);
+    const pageScreenshotPath = pageScreenshotData ? await this.saveScreenshot(pageScreenshotData) : undefined;
+    const pageScreenshotDataUrl = pageScreenshotData ? this.toScreenshotDataUrl(pageScreenshotData) : undefined;
 
     const step: ScrollStep = {
       ...this.createBaseStep(
@@ -1295,8 +1313,8 @@ export class Recorder {
     const fullScreenshotPath = clip ? await this.saveScreenshot(fullScreenshotData) : screenshotPath;
     const fullScreenshotDataUrl = clip ? this.toScreenshotDataUrl(fullScreenshotData) : screenshotDataUrl;
     const pageScreenshotData = await this.captureFullPageScreenshot(0, highlightBoundingBox);
-    const pageScreenshotPath = await this.saveScreenshot(pageScreenshotData);
-    const pageScreenshotDataUrl = this.toScreenshotDataUrl(pageScreenshotData);
+    const pageScreenshotPath = pageScreenshotData ? await this.saveScreenshot(pageScreenshotData) : undefined;
+    const pageScreenshotDataUrl = pageScreenshotData ? this.toScreenshotDataUrl(pageScreenshotData) : undefined;
 
     // Check if should redact
     const redactScreenshot = this.shouldRedactPaste(text, fieldName);

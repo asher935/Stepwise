@@ -17,6 +17,12 @@ function getEnvScreenshotFormat(defaultValue: 'png' | 'jpeg'): 'png' | 'jpeg' {
   return defaultValue;
 }
 
+function getEnvBoolean(key: string, defaultValue: boolean): boolean {
+  const value = process.env[key];
+  if (value === undefined) return defaultValue;
+  return value.toLowerCase() === 'true';
+}
+
 export const env = {
   PORT: getEnvNumber('PORT', DEFAULTS.PORT),
   MAX_SESSIONS: getEnvNumber('MAX_SESSIONS', DEFAULTS.MAX_SESSIONS),
@@ -28,6 +34,7 @@ export const env = {
   SCREENCAST_QUALITY: getEnvNumber('SCREENCAST_QUALITY', DEFAULTS.SCREENCAST_QUALITY),
   SCREENSHOT_QUALITY: getEnvNumber('SCREENSHOT_QUALITY', DEFAULTS.SCREENSHOT_QUALITY),
   SCREENSHOT_FORMAT: getEnvScreenshotFormat(DEFAULTS.SCREENSHOT_FORMAT),
+  CAPTURE_FULL_PAGE_SCREENSHOTS: getEnvBoolean('CAPTURE_FULL_PAGE_SCREENSHOTS', true),
   SCREENCAST_MAX_FPS: getEnvNumber('SCREENCAST_MAX_FPS', DEFAULTS.SCREENCAST_MAX_FPS),
   SESSION_TOKEN_BYTES: getEnvNumber('SESSION_TOKEN_BYTES', DEFAULTS.SESSION_TOKEN_BYTES),
   TYPING_DEBOUNCE_MS: getEnvNumber('TYPING_DEBOUNCE_MS', DEFAULTS.TYPING_DEBOUNCE_MS),

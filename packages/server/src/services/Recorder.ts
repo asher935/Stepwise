@@ -68,11 +68,7 @@ export class Recorder {
     redactionRects: Rect[];
     clip?: { x: number; y: number; width: number; height: number } | null;
   } | null = null;
-  private typeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   private isFinalizing: boolean = false;
-  private readonly TYPING_DEBOUNCE_MS = env.TYPING_DEBOUNCE_MS;
-  private readonly UPDATE_WINDOW_MS = 5000; // 5 seconds to allow updates to last type step
-  private lastTypeStep: { step: TypeStep; timestamp: number; fieldName: string } | null = null;
 
   constructor(options: RecorderOptions) {
     this.session = options.session;
@@ -486,12 +482,11 @@ export class Recorder {
           }
 
           if (el.id) {
-            try {
-              const forLabel = document.querySelector(`label[for="${CSS.escape(el.id)}"]`);
-              if (forLabel) {
-                candidates.add(forLabel);
-              }
-            } catch {}
+            const forLabel = Array.from(document.querySelectorAll('label'))
+              .find((label) => label.htmlFor === el.id);
+            if (forLabel) {
+              candidates.add(forLabel);
+            }
           }
 
           const parent = el.parentElement;
@@ -801,9 +796,6 @@ export class Recorder {
     // Flush any pending scroll step first (in case prepareClickScreenshot wasn't called)
     await this.flushPendingScrollStep();
 
-    // Clear last type step on click (user is clicking a different element)
-    this.clearLastTypeStep();
-
     let screenshotPath: string;
     let screenshotDataUrl: string;
     let fullScreenshotPath: string;
@@ -892,9 +884,9 @@ export class Recorder {
   }
 
   /**
-   * Records keyboard input (accumulated with debounce timer)
+   * Records keyboard input (accumulated until next non-typing action)
    */
-  async recordKeyInput(key: string, text?: string): Promise<void> {
+  async recordKeyInput(_key: string, text?: string): Promise<void> {
     if (this.session.recordingPaused) return;
     if (this.isStepLimitReached()) return;
 
@@ -914,30 +906,8 @@ export class Recorder {
       ? inferFieldName(focusedElement)
       : 'field';
 
-    // Check if we should update the last type step instead of creating a new one
-    const now = Date.now();
-
-    if (this.lastTypeStep &&
-        this.lastTypeStep.fieldName === fieldName &&
-        (now - this.lastTypeStep.timestamp) < this.UPDATE_WINDOW_MS) {
-      // Update existing step instead of creating new one
-      this.lastTypeStep.step.rawValue = (this.lastTypeStep.step.rawValue || '') + (text || '');
-
-      // Clear debounce timer if running
-      if (this.typeDebounceTimer) {
-        clearTimeout(this.typeDebounceTimer);
-      }
-
-      // Start new debounce timer to update screenshot
-      this.typeDebounceTimer = setTimeout(() => {
-        void this.updateLastTypeStepScreenshot().catch((error: unknown) => {
-          console.error('[Recorder] Failed to update type step screenshot:', error);
-        });
-      }, this.TYPING_DEBOUNCE_MS);
-
-      // Emit step:updated event
-      this.emit('step:updated', this.lastTypeStep.step);
-      return;
+    if (this.pendingTypeStep && this.pendingTypeStep.fieldName !== fieldName) {
+      await this.flushPendingTypeStep();
     }
 
     // If no pending type step, create one WITHOUT screenshot
@@ -974,20 +944,10 @@ export class Recorder {
       this.pendingTypeStep.accumulatedText += text;
     }
 
-    // Reset debounce timer on each keystroke
-    if (this.typeDebounceTimer) {
-      clearTimeout(this.typeDebounceTimer);
-    }
-
-    this.typeDebounceTimer = setTimeout(() => {
-      void this.finalizePendingTypeStep().catch((error: unknown) => {
-        console.error('[Recorder] Failed to finalize type step:', error);
-      });
-    }, this.TYPING_DEBOUNCE_MS);
   }
 
   /**
-   * Finalizes pending type step when debounce timer expires
+   * Finalizes pending type step
    * Captures screenshot and emits the step
    */
   private async finalizePendingTypeStep(): Promise<void> {
@@ -995,10 +955,6 @@ export class Recorder {
 
     if (this.session.recordingPaused) {
       this.pendingTypeStep = null;
-      if (this.typeDebounceTimer) {
-        clearTimeout(this.typeDebounceTimer);
-        this.typeDebounceTimer = null;
-      }
       return;
     }
 
@@ -1007,12 +963,6 @@ export class Recorder {
 
     try {
       const step = this.pendingTypeStep;
-
-      // Clear debounce timer
-      if (this.typeDebounceTimer) {
-        clearTimeout(this.typeDebounceTimer);
-        this.typeDebounceTimer = null;
-      }
 
       // Capture screenshot now that typing has paused
       const highlightBoundingBox = step.target.boundingBox && step.target.boundingBox.width > 0 && step.target.boundingBox.height > 0
@@ -1061,13 +1011,6 @@ export class Recorder {
 
       this.pendingTypeStep = null;
 
-      // Store as last type step for potential updates
-      this.lastTypeStep = {
-        step: finalStep,
-        timestamp: Date.now(),
-        fieldName: step.fieldName,
-      };
-
       this.session.steps.push(finalStep);
       this.emit('step:created', finalStep);
     } finally {
@@ -1082,99 +1025,8 @@ export class Recorder {
   private async flushPendingTypeStep(): Promise<void> {
     if (!this.pendingTypeStep) return;
 
-    // Clear debounce timer if running
-    if (this.typeDebounceTimer) {
-      clearTimeout(this.typeDebounceTimer);
-      this.typeDebounceTimer = null;
-    }
-
     // Use the same finalization logic
     await this.finalizePendingTypeStep();
-  }
-
-  /**
-   * Updates the screenshot of the last type step
-   * Called when user continues typing after debounce expires
-   */
-  private async updateLastTypeStepScreenshot(): Promise<void> {
-    if (!this.lastTypeStep) return;
-    if (this.session.recordingPaused) {
-      this.lastTypeStep = null;
-      if (this.typeDebounceTimer) {
-        clearTimeout(this.typeDebounceTimer);
-        this.typeDebounceTimer = null;
-      }
-      return;
-    }
-
-    this.isFinalizing = true;
-    const step = this.lastTypeStep.step;
-
-    try {
-      // Get fresh element info
-      const focusedElement = await this.getFocusedElementInfo();
-      if (!focusedElement) {
-        this.isFinalizing = false;
-        return;
-      }
-
-      // Get clip region
-      const clip = await this.getClipForTarget(focusedElement?.boundingBox ?? null);
-
-      // Capture new screenshot
-      const highlightBoundingBox = focusedElement?.boundingBox && focusedElement.boundingBox.width > 0 && focusedElement.boundingBox.height > 0
-        ? focusedElement.boundingBox
-        : undefined;
-      const capture = await this.captureScreenshot(
-        50,
-        clip ?? undefined,
-        highlightBoundingBox
-      );
-      const screenshotData = capture.screenshotData;
-
-      const screenshotPath = await this.saveScreenshot(screenshotData);
-      const viewportCapture = clip
-        ? await this.captureScreenshot(
-          0,
-          undefined,
-          highlightBoundingBox
-        )
-        : null;
-      const fullScreenshotData = viewportCapture?.screenshotData ?? screenshotData;
-      const fullScreenshotPath = clip ? await this.saveScreenshot(fullScreenshotData) : screenshotPath;
-
-      // Redact if needed
-      let finalScreenshotData = screenshotData;
-      if (step.redactScreenshot && capture.redactionRects.length > 0) {
-        finalScreenshotData = await redactionService.redact(screenshotData, capture.redactionRects);
-      }
-
-      // Update step with new screenshot
-      step.screenshotPath = screenshotPath;
-      step.screenshotDataUrl = this.toScreenshotDataUrl(finalScreenshotData);
-      step.fullScreenshotPath = fullScreenshotPath;
-      step.fullScreenshotDataUrl = this.toScreenshotDataUrl(fullScreenshotData);
-      step.redactionRects = capture.redactionRects;
-      if (step.redactScreenshot) {
-        step.originalScreenshotDataUrl = this.toScreenshotDataUrl(screenshotData);
-      }
-
-      // Update timestamp
-      this.lastTypeStep.timestamp = Date.now();
-
-      // Emit step:updated event
-      this.emit('step:updated', step);
-    } finally {
-      this.isFinalizing = false;
-    }
-  }
-
-  /**
-   * Clears the last type step reference
-   * Called when user navigates, clicks a different element, or performs other actions
-   */
-  private clearLastTypeStep(): void {
-    this.lastTypeStep = null;
   }
 
   /**
@@ -1187,9 +1039,6 @@ export class Recorder {
     // Flush any pending type or scroll steps
     await this.flushPendingTypeStep();
     await this.flushPendingScrollStep();
-
-    // Clear last type step on navigation
-    this.clearLastTypeStep();
 
     await this.cdpBridge.waitForPageLoad();
     const { screenshotData, redactionRects } = await this.captureScreenshot();
@@ -1302,9 +1151,6 @@ export class Recorder {
     // Flush any pending type or scroll steps
     await this.flushPendingTypeStep();
     await this.flushPendingScrollStep();
-
-    // Clear last type step on paste (paste creates its own step)
-    this.clearLastTypeStep();
 
     // Get focused element
     const focusedElement = await this.getFocusedElementInfo();
@@ -1589,12 +1435,6 @@ export class Recorder {
     this.pendingClickScreenshot = null;
     this.pendingScrollData = null;
     this.pendingTypeStep = null;
-    this.lastTypeStep = null;
-
-    if (this.typeDebounceTimer) {
-      clearTimeout(this.typeDebounceTimer);
-      this.typeDebounceTimer = null;
-    }
   }
 
   /**
@@ -1603,13 +1443,6 @@ export class Recorder {
   async cleanup(): Promise<void> {
     this.pendingClickScreenshot = null;
     this.pendingScrollData = null;
-    this.lastTypeStep = null;
-
-    // Clear debounce timer
-    if (this.typeDebounceTimer) {
-      clearTimeout(this.typeDebounceTimer);
-      this.typeDebounceTimer = null;
-    }
 
     await this.flushPendingTypeStep();
   }

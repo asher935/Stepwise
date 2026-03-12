@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test';
+import type { TypeStep } from '@stepwise/shared';
 import { Recorder } from './Recorder.js';
 import { env } from '../lib/env.js';
 import type { ServerSession } from '../types/session.js';
@@ -8,6 +9,7 @@ type ElementInfo = {
   tagName: string;
   boundingBox: ScreenshotClip;
   text?: string;
+  labelText?: string;
 };
 
 type CDPBridgeMock = {
@@ -191,5 +193,113 @@ describe('Recorder screenshot variants', () => {
     expect(step?.fullScreenshotDataUrl).toBe(toDataUrl(viewportBuffer));
     expect(step?.pageScreenshotDataUrl).toBe(toDataUrl(fullPageBuffer));
     expect(savedBuffers.map((buffer) => buffer.toString('utf8'))).toEqual(['viewport', 'fullpage']);
+  });
+});
+
+describe('Recorder typing flush behavior', () => {
+  it('does not finalize typing until the next non-typing action', async () => {
+    const typeBuffer = Buffer.from('type-shot');
+    const clickBuffer = Buffer.from('click-shot');
+    const screenshotCalls: Array<string> = [];
+    const savedPaths: string[] = [];
+
+    const cdpBridge: CDPBridgeMock = {
+      getElementAtPoint: async () => ({
+        tagName: 'button',
+        boundingBox: { x: 120, y: 140, width: 80, height: 24 },
+        text: 'Submit',
+      }),
+      getHighlightColor: () => '#FF0000',
+      takeScreenshot: async () => clickBuffer,
+      takeScreenshotWithHighlight: async (boundingBox) => {
+        const marker = boundingBox.x === 20 ? 'type' : 'click';
+        screenshotCalls.push(marker);
+        return marker === 'type' ? typeBuffer : clickBuffer;
+      },
+      waitForPageLoad: async () => undefined,
+    };
+
+    const { recorder, session } = createRecorder(cdpBridge);
+    Object.assign(recorder as unknown as RecorderTestHarness & {
+      getFocusedElementInfo: () => Promise<ElementInfo | null>;
+    }, {
+      getFocusedElementInfo: async () => ({
+        tagName: 'input',
+        labelText: 'Username',
+        boundingBox: { x: 20, y: 40, width: 220, height: 36 },
+      }),
+      getClipForTarget: async () => null,
+      saveScreenshot: async (screenshotData: Buffer) => {
+        const path = `/tmp/${savedPaths.length + 1}-${screenshotData.toString('utf8')}.png`;
+        savedPaths.push(path);
+        return path;
+      },
+    });
+
+    await recorder.recordKeyInput('a', 'a');
+    await new Promise((resolve) => setTimeout(resolve, env.TYPING_DEBOUNCE_MS + 100));
+
+    expect(session.steps).toHaveLength(0);
+    expect(screenshotCalls).toHaveLength(0);
+
+    await recorder.prepareClickScreenshot(150, 180);
+
+    expect(session.steps).toHaveLength(1);
+    const typeStep = session.steps[0] as TypeStep | undefined;
+    expect(typeStep?.action).toBe('type');
+    expect(typeStep?.rawValue).toBe('a');
+    expect(typeStep?.screenshotDataUrl).toBe(toDataUrl(typeBuffer));
+    expect(screenshotCalls).toEqual(['type', 'click']);
+  });
+
+  it('flushes the previous pending type step when typing moves to a different field', async () => {
+    const typeBuffer = Buffer.from('type-shot');
+    const screenshotCalls: Array<string> = [];
+    const focusedElements: Array<ElementInfo> = [
+      {
+        tagName: 'input',
+        labelText: 'Username',
+        boundingBox: { x: 20, y: 40, width: 220, height: 36 },
+      },
+      {
+        tagName: 'input',
+        labelText: 'Password',
+        boundingBox: { x: 20, y: 90, width: 220, height: 36 },
+      },
+    ];
+
+    const cdpBridge: CDPBridgeMock = {
+      getHighlightColor: () => '#FF0000',
+      takeScreenshot: async () => typeBuffer,
+      takeScreenshotWithHighlight: async () => {
+        screenshotCalls.push('type');
+        return typeBuffer;
+      },
+      waitForPageLoad: async () => undefined,
+    };
+
+    const { recorder, session } = createRecorder(cdpBridge);
+    Object.assign(recorder as unknown as RecorderTestHarness & {
+      getFocusedElementInfo: () => Promise<ElementInfo | null>;
+    }, {
+      getFocusedElementInfo: async () => focusedElements.shift() ?? null,
+      getClipForTarget: async () => null,
+      saveScreenshot: async () => '/tmp/type-shot.png',
+    });
+
+    await recorder.recordKeyInput('a', 'a');
+    expect(session.steps).toHaveLength(0);
+
+    await recorder.recordKeyInput('b', 'b');
+
+    expect(session.steps).toHaveLength(1);
+    const firstTypeStep = session.steps[0] as TypeStep | undefined;
+    expect(firstTypeStep?.action).toBe('type');
+    expect(firstTypeStep?.fieldName).toBe('Username');
+    expect(firstTypeStep?.rawValue).toBe('a');
+    expect(screenshotCalls).toEqual(['type']);
+
+    await new Promise((resolve) => setTimeout(resolve, env.TYPING_DEBOUNCE_MS + 100));
+    expect(session.steps).toHaveLength(1);
   });
 });

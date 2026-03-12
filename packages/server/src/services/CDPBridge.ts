@@ -1086,13 +1086,7 @@ export class CDPBridge {
   }
 
   private async takeFullPageScreenshot(): Promise<Buffer> {
-    let metrics: FullPageMetrics | null = null;
-
-    try {
-      metrics = await this.getFullPageMetrics();
-    } catch {
-      metrics = null;
-    }
+    const metrics = await this.getFullPageMetrics().catch(() => null);
 
     try {
       let screenshot = await this.takeFullPageScreenshotWithCDP();

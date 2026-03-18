@@ -1144,6 +1144,9 @@ export class CDPBridge {
 
       const maxDimension = 16000;
       const scale = Math.min(1, maxDimension / Math.max(width, height));
+      if (scale < 1) {
+        return null;
+      }
 
       const result = await this.cdp.send('Page.captureScreenshot', {
         format: env.SCREENSHOT_FORMAT === 'jpeg' ? 'jpeg' : 'png',

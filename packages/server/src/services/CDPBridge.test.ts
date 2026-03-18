@@ -186,4 +186,52 @@ describe('CDPBridge screenshots', () => {
     expect(screenshotCalls).toHaveLength(1);
     expect(screenshotCalls[0]?.['fullPage']).toBe(true);
   });
+
+  it('falls back to Playwright full-page screenshots when CDP would downscale the page', async () => {
+    const screenshotBuffer = await createPng(1200);
+    const screenshotCalls: Array<Record<string, unknown>> = [];
+    const captureCalls: string[] = [];
+
+    const page: MockPage = {
+      screenshot: async (options) => {
+        screenshotCalls.push(options);
+        return screenshotBuffer;
+      },
+      setViewportSize: async () => undefined,
+      waitForTimeout: async () => undefined,
+      evaluate: async () => ({
+        viewportHeight: 600,
+        pageHeight: 20000,
+        hasNestedScrollableContent: false,
+      }) as never,
+    };
+
+    const cdp: MockCDP = {
+      send: async (method) => {
+        if (method === 'Page.getLayoutMetrics') {
+          return {
+            contentSize: {
+              width: 1280,
+              height: 20000,
+            },
+          };
+        }
+        if (method === 'Page.captureScreenshot') {
+          captureCalls.push(method);
+          return {
+            data: screenshotBuffer.toString('base64'),
+          };
+        }
+        return undefined;
+      },
+    };
+
+    const bridge = createBridge(page, cdp);
+    const result = await bridge.takeScreenshot(undefined, true);
+
+    expect(result).toEqual(screenshotBuffer);
+    expect(captureCalls).toHaveLength(0);
+    expect(screenshotCalls).toHaveLength(1);
+    expect(screenshotCalls[0]?.['fullPage']).toBe(true);
+  });
 });

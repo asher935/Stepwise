@@ -336,6 +336,29 @@ export function EditStepModal({ open, onOpenChange, screenshotDataUrl, fullScree
     }
   }, [displayedLegendItems, editableLegendItems, editablePageLegendItems, onSaveLegendItems, isEditing]);
 
+  const handleRemoveAllLegendItems = useCallback(async () => {
+    if (!onSaveLegendItems) {
+      return;
+    }
+
+    const nextViewportItems: StepLegendItem[] = [];
+    const nextPageItems: StepLegendItem[] = [];
+    const nextCaption = buildLegendCaption(nextViewportItems);
+
+    setIsUpdatingLegend(true);
+    try {
+      await onSaveLegendItems(nextViewportItems, nextCaption, nextPageItems);
+      setEditableLegendItems(nextViewportItems);
+      setEditablePageLegendItems(nextPageItems);
+      setHoveredLegendBubbleNumber(null);
+      if (!isEditing) {
+        setEditedCaption(nextCaption);
+      }
+    } finally {
+      setIsUpdatingLegend(false);
+    }
+  }, [onSaveLegendItems, isEditing]);
+
   const screenshotToDisplay = screenshotMode === 'zoomed'
     ? (redactedScreenshotUrl || originalScreenshotUrl)
     : screenshotMode === 'viewport'
@@ -549,6 +572,18 @@ export function EditStepModal({ open, onOpenChange, screenshotDataUrl, fullScree
                       {displayedLegendItems.length}
                     </span>
                   </div>
+                  {onSaveLegendItems && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void handleRemoveAllLegendItems();
+                      }}
+                      disabled={isUpdatingLegend}
+                      className="text-[10px] font-black uppercase tracking-widest text-red-500 hover:text-red-600 disabled:opacity-50"
+                    >
+                      Remove all
+                    </button>
+                  )}
                 </div>
 
                 <div

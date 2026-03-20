@@ -122,9 +122,11 @@ export function ImportModal({ open, onOpenChange, setGuideTitle }: ImportModalPr
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-      <div
-        className="absolute inset-0 bg-[#2D241E]/20 backdrop-blur-md animate-in fade-in duration-500"
+      <button
+        type="button"
+        className="absolute inset-0 bg-[#2D241E]/20 backdrop-blur-md animate-in fade-in duration-500 cursor-default border-0"
         onClick={handleClose}
+        aria-label="Close modal"
       />
 
       <div className="relative w-full max-w-xl bg-white/90 backdrop-blur-3xl border border-white rounded-[48px] overflow-hidden shadow-[0_40px_100px_rgba(45,36,30,0.15)] animate-in zoom-in-95 duration-500">
@@ -138,7 +140,7 @@ export function ImportModal({ open, onOpenChange, setGuideTitle }: ImportModalPr
               <h2 className="text-4xl font-black text-[#2D241E] tracking-tight">Import Guide</h2>
               <p className="text-[#6B5E55] font-medium text-sm">Load a previously recorded .stepwise file.</p>
             </div>
-            <button onClick={handleClose} className="w-12 h-12 flex items-center justify-center bg-white hover:bg-[#FDF2E9] border border-black/5 rounded-full transition active:scale-90 shadow-sm">
+            <button type="button" onClick={handleClose} className="w-12 h-12 flex items-center justify-center bg-white hover:bg-[#FDF2E9] border border-black/5 rounded-full transition active:scale-90 shadow-sm">
               <X size={20} className="text-[#BBAFA7]" />
             </button>
           </div>
@@ -146,14 +148,15 @@ export function ImportModal({ open, onOpenChange, setGuideTitle }: ImportModalPr
           <div className="space-y-8">
             <input
               ref={fileInputRef}
+              id="import-file-input"
               type="file"
               accept=".stepwise"
-              onChange={handleInputChange}
+              onChange={(e) => void handleInputChange(e)}
               className="hidden"
             />
-            <div
-              onClick={() => fileInputRef.current?.click()}
-              onDrop={handleDrop}
+            <label
+              htmlFor="import-file-input"
+              onDrop={(e) => void handleDrop(e)}
               onDragOver={handleDragOver}
               className={`
                 group relative border-2 border-dashed rounded-[40px] p-12 flex flex-col items-center justify-center transition-all cursor-pointer
@@ -179,16 +182,17 @@ export function ImportModal({ open, onOpenChange, setGuideTitle }: ImportModalPr
                   </p>
                 </>
               )}
-            </div>
+            </label>
 
             {needsPassword && (
               <div className="space-y-3 animate-in slide-in-from-top-4 duration-500">
-                <label className="text-[10px] font-black text-[#BBAFA7] uppercase tracking-widest ml-4 flex items-center gap-2">
+                <label htmlFor="import-password" className="text-[10px] font-black text-[#BBAFA7] uppercase tracking-widest ml-4 flex items-center gap-2">
                   <Lock size={12} />
                   Decryption Password
                 </label>
                 <div className="relative group">
                   <input
+                    id="import-password"
                     type={showPassword ? 'text' : 'password'}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
@@ -213,7 +217,8 @@ export function ImportModal({ open, onOpenChange, setGuideTitle }: ImportModalPr
             )}
 
             <button
-              onClick={handleImport}
+              type="button"
+              onClick={() => void handleImport()}
               disabled={!file || isImporting}
               className={`
                 w-full py-6 rounded-[32px] font-black text-lg transition-all active:scale-95 flex items-center justify-center space-x-3

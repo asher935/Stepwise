@@ -1,4 +1,5 @@
-import type { SessionState, Step } from './index.js';
+import type { SessionState } from './session.js';
+import type { Step } from './step.js';
 
 /** Client-to-server message types */
 export type ClientMessageType =

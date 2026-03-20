@@ -555,10 +555,10 @@ export class ExportService {
     };
 
     const zipBuffer = await new Promise<Buffer>((resolve, reject) => {
-      const chunks: Buffer[] = [];
+      const chunks: Uint8Array[] = [];
       const archive = archiver('zip', { zlib: { level: 9 } });
 
-      archive.on('data', (chunk: Buffer) => chunks.push(chunk));
+      archive.on('data', (chunk: Uint8Array) => chunks.push(chunk));
       archive.on('end', () => resolve(Buffer.concat(chunks)));
       archive.on('error', reject);
 

@@ -52,17 +52,10 @@ export function StepCard({ step }: StepCardProps) {
       onMouseLeave={handleMouseLeave}
     >
       {/* Top Section with Icon and Info */}
-      <div
-        role="button"
-        tabIndex={0}
+      <button
+        type="button"
         className={`p-6 flex items-start space-x-5 w-full cursor-pointer bg-transparent border-0 text-left`}
         onClick={handleToggleCollapse}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            handleToggleCollapse();
-          }
-        }}
       >
         <div className={`shrink-0 rounded-[24px] bg-[#FAD7BD]/30 text-[#E67E22] flex items-center justify-center font-black transition-all duration-500 ${!shouldExpand ? 'w-10 h-10 text-base rounded-[14px]' : 'w-16 h-16 text-2xl'}`}>
           {step.index + 1}
@@ -92,7 +85,7 @@ export function StepCard({ step }: StepCardProps) {
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  handleDelete();
+                  void handleDelete();
                 }}
                 className="w-8 h-8 flex items-center justify-center text-[#BBAFA7] hover:text-red-500 transition-all rounded-full hover:bg-red-50"
               >
@@ -105,7 +98,7 @@ export function StepCard({ step }: StepCardProps) {
             {step.caption || 'No caption'}
           </div>
         </div>
-      </div>
+      </button>
 
       {/* Screenshot Preview with animated collapse */}
       <div className={`px-6 pb-6 transition-all duration-500 ease-in-out ${!shouldExpand ? 'max-h-0 opacity-0 overflow-hidden pb-0' : 'max-h-[500px] opacity-100'}`}>

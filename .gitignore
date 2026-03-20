@@ -6,6 +6,9 @@ dist/
 .DS_Store
 bun.lockb
 packages/client/.vite/
+packages/desktop/.bundle/
+packages/desktop/release-assets/
 /tmp/
 playwright-report/
 test-results/
+packages/desktop/out

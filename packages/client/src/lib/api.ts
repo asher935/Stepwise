@@ -1,15 +1,14 @@
-import type { 
-  ExportFormat, 
+import type {
+  ExportFormat,
   ExportResult,
   ImportResult,
   ScreenshotMode,
-  SessionState, 
-  Step, 
+  SessionState,
+  Step,
   StepLegendItem,
   StepwiseManifest,
 } from '@stepwise/shared';
-
-const API_BASE = '/api';
+import { getRuntimeConfig } from './runtime';
 
 interface ApiResponse<T> {
   success: boolean;
@@ -36,6 +35,7 @@ class ApiClient {
     path: string,
     body?: unknown
   ): Promise<T> {
+    const runtimeConfig = getRuntimeConfig();
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };
@@ -44,7 +44,7 @@ class ApiClient {
       headers['Authorization'] = `Bearer ${this.token}`;
     }
 
-    const response = await fetch(`${API_BASE}${path}`, {
+    const response = await fetch(`${runtimeConfig.apiBaseUrl}${path}`, {
       method,
       headers,
       body: body ? JSON.stringify(body) : undefined,
@@ -141,6 +141,7 @@ class ApiClient {
     x: number,
     y: number
   ): Promise<{ fileName: string; size: number }> {
+    const runtimeConfig = getRuntimeConfig();
     const formData = new FormData();
     formData.append('file', file);
     formData.append('x', String(x));
@@ -151,7 +152,7 @@ class ApiClient {
       headers['Authorization'] = `Bearer ${this.token}`;
     }
 
-    const response = await fetch(`${API_BASE}/sessions/${sessionId}/upload`, {
+    const response = await fetch(`${runtimeConfig.apiBaseUrl}/sessions/${sessionId}/upload`, {
       method: 'POST',
       headers,
       body: formData,
@@ -181,13 +182,14 @@ class ApiClient {
   }
 
   async downloadExport(sessionId: string, filename: string): Promise<Blob> {
+    const runtimeConfig = getRuntimeConfig();
     const headers: Record<string, string> = {};
     if (this.token) {
       headers['Authorization'] = `Bearer ${this.token}`;
     }
 
     const response = await fetch(
-      `${API_BASE}/export/${sessionId}/download/${filename}`,
+      `${runtimeConfig.apiBaseUrl}/export/${sessionId}/download/${filename}`,
       { headers }
     );
 
@@ -203,6 +205,7 @@ class ApiClient {
     file: File,
     password?: string
   ): Promise<ImportResult> {
+    const runtimeConfig = getRuntimeConfig();
     const formData = new FormData();
     formData.append('file', file);
     if (password) {
@@ -214,7 +217,7 @@ class ApiClient {
       headers['Authorization'] = `Bearer ${this.token}`;
     }
 
-    const response = await fetch(`${API_BASE}/import/${sessionId}`, {
+    const response = await fetch(`${runtimeConfig.apiBaseUrl}/import/${sessionId}`, {
       method: 'POST',
       headers,
       body: formData,
@@ -234,6 +237,7 @@ class ApiClient {
     file: File,
     password?: string
   ): Promise<{ manifest: StepwiseManifest; stepCount: number; encrypted: boolean }> {
+    const runtimeConfig = getRuntimeConfig();
     const formData = new FormData();
     formData.append('file', file);
     if (password) {
@@ -245,7 +249,7 @@ class ApiClient {
       headers['Authorization'] = `Bearer ${this.token}`;
     }
 
-    const response = await fetch(`${API_BASE}/import/${sessionId}/preview`, {
+    const response = await fetch(`${runtimeConfig.apiBaseUrl}/import/${sessionId}/preview`, {
       method: 'POST',
       headers,
       body: formData,

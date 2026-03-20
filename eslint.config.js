@@ -96,6 +96,17 @@ export default [
       'no-undef': 'off', // TypeScript handles this
     },
   },
+  {
+    files: ['packages/desktop/**/*.{js,mjs,cjs,ts,tsx}'],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+      },
+    },
+    rules: {
+      'no-undef': 'off',
+    },
+  },
 
   // Ignore patterns
   {
@@ -107,6 +118,7 @@ export default [
       'coverage/**',
       'playwright-report/**',
       'test-results/**',
+      '**/*.test.ts',
       '*.config.js',
       '*.config.ts',
       'docker/**',

@@ -1,152 +1,23 @@
-import { join } from 'node:path';
-
-import { cors } from '@elysiajs/cors';
-import type { ServerWebSocket } from 'bun';
-import { Elysia, file } from 'elysia';
-
 import { env } from './lib/env.js';
-import { exportRoutes } from './routes/export.js';
-import { importRoutes } from './routes/import.js';
-import { sessionRoutes } from './routes/session.js';
-import { sessionManager } from './services/SessionManager.js';
-import type { WSConnection } from './types/session.js';
-import { handleClose, handleMessage, handleOpen, notifySessionEnded, notifySessionExpiring, notifySessionStarted, notifySessionState } from './ws/handler.js';
+import { getDefaultClientDistPath } from './app.js';
+import { shutdownStepwiseServer, startStepwiseServer } from './server.js';
 
-// Server startup information logged via console.warn for development tracking
 console.warn(`[Server] Starting Stepwise server...`);
 console.warn(`[Server] Environment: ${env.NODE_ENV}`);
 console.warn(`[Server] Max sessions: ${env.MAX_SESSIONS}`);
 
-const clientDistPath = join(import.meta.dir, '..', '..', 'client', 'dist');
+const clientDistPath = getDefaultClientDistPath();
 if (env.NODE_ENV === 'production') {
   console.warn(`[Server] Static files path: ${clientDistPath}`);
 }
 
-const app = new Elysia()
-  .use(cors({
-    origin: env.NODE_ENV === 'development',
-    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-  }))
-  
-  .get('/api/health', () => ({
-    status: 'ok',
-    timestamp: Date.now(),
-    sessions: sessionManager.getActiveSessionCount(),
-    maxSessions: env.MAX_SESSIONS,
-  }))
-  
-  .use(sessionRoutes)
-  .use(exportRoutes)
-  .use(importRoutes)
-  
-  .ws('/ws', {
-    open(ws) {
-      const elysiaWs = ws as unknown as ServerWebSocket<WSConnection> & {
-        data: WSConnection & { query?: { sessionId?: string; token?: string } };
-      };
-
-      const sessionId = elysiaWs.data.query?.sessionId;
-      const token = elysiaWs.data.query?.token;
-
-      if (!sessionId || !token) {
-        elysiaWs.close(1008, 'Missing sessionId or token');
-        return;
-      }
-
-      elysiaWs.data = {
-        sessionId,
-        token,
-        lastPingAt: Date.now(),
-      };
-
-      void handleOpen(elysiaWs).catch((error: unknown) => {
-        console.error('[WS] Open handler failed:', error);
-      });
-    },
-    message(ws, message) {
-      const elysiaWs = ws as unknown as ServerWebSocket<WSConnection>;
-      void handleMessage(elysiaWs, message).catch((error: unknown) => {
-        console.error('[WS] Message handler failed:', error);
-      });
-    },
-    close(ws) {
-      const elysiaWs = ws as unknown as ServerWebSocket<WSConnection>;
-      void handleClose(elysiaWs).catch((error: unknown) => {
-        console.error('[WS] Close handler failed:', error);
-      });
-    },
-  });
-
-if (env.NODE_ENV === 'production') {
-  app
-    .get('/assets/*', ({ params }) => {
-      const assetPath = params['*'];
-      return file(join(clientDistPath, 'assets', assetPath));
-    })
-    .get('/*', () => file(join(clientDistPath, 'index.html')));
-}
-
-app.onError(({ error, code }) => {
-  console.error(`[Server] Error (${code}):`, error);
-  const message = 'message' in error ? error.message : 'An internal error occurred';
-  return {
-    success: false,
-    error: {
-      code: 'INTERNAL_ERROR',
-      message: env.NODE_ENV === 'development' 
-        ? message
-        : 'An internal error occurred',
-    },
-  };
-});
-
-sessionManager.on('session:started', (sessionId) => {
-  void notifySessionStarted(sessionId).catch((error: unknown) => {
-    console.error('[Server] Failed to notify started session:', error);
-  });
-});
-
-sessionManager.on('session:ended', (sessionId, data) => {
-  const reason = (
-    typeof data === 'object' &&
-    data !== null &&
-    'reason' in data &&
-    (data.reason === 'user' || data.reason === 'timeout' || data.reason === 'error')
-  )
-    ? data.reason
-    : 'error';
-
-  void notifySessionEnded(sessionId, reason).catch((error: unknown) => {
-    console.error('[Server] Failed to notify ended session:', error);
-  });
-});
-
-sessionManager.on('session:expiring', (sessionId, data) => {
-  const remainingMs = (
-    typeof data === 'object' &&
-    data !== null &&
-    'remainingMs' in data &&
-    typeof data.remainingMs === 'number'
-  )
-    ? data.remainingMs
-    : 0;
-
-  if (remainingMs <= 0) {
-    return;
-  }
-
-  notifySessionExpiring(sessionId, remainingMs);
-});
-
-sessionManager.on('session:updated', (sessionId) => {
-  notifySessionState(sessionId);
+export const app = startStepwiseServer({
+  clientDistPath,
+  serveClient: env.NODE_ENV === 'production',
 });
 
 async function shutdown(): Promise<void> {
-  console.warn('[Server] Shutting down...');
-  await sessionManager.shutdown();
-  console.warn('[Server] Shutdown complete');
+  await shutdownStepwiseServer();
   process.exit(0);
 }
 
@@ -156,8 +27,6 @@ process.on('SIGINT', () => {
 process.on('SIGTERM', () => {
   void shutdown();
 });
-
-app.listen(env.PORT);
 
 console.warn(`[Server] Stepwise server running on http://localhost:${env.PORT}`);
 console.warn(`[Server] WebSocket endpoint: ws://localhost:${env.PORT}/ws`);

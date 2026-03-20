@@ -1,5 +1,5 @@
-import { useState, useCallback } from 'react';
-import { Play, Lock, Layers, ShieldCheck, Search, FileUp, Shield } from 'lucide-react';
+import { useCallback, useState } from 'react';
+import { FileUp, Layers, Lock, Play, Search, Shield, ShieldCheck } from 'lucide-react';
 import { useSessionStore } from '@/stores/sessionStore';
 
 interface LobbyProps {
@@ -32,9 +32,9 @@ export function Lobby({ onImportClick }: LobbyProps) {
             <Shield className="w-3.5 h-3.5 mr-2" />
             100% Private & Local
           </div>
-          <h1 className="text-6xl md:text-8xl font-black tracking-tight text-[#2D241E]">
-            Stepwise<span className="text-[#E67E22]">!</span>
-          </h1>
+         <h1 className="text-6xl md:text-8xl font-black tracking-tight text-[#2D241E]">
+    Stepwise<span className="text-[#E67E22]">!</span>
+  </h1>
           <p className="text-xl text-[#6B5E55] max-w-xl mx-auto leading-relaxed font-medium">
             Turn your browser interactions into beautiful, <br />structured guides automatically.
           </p>
@@ -42,7 +42,7 @@ export function Lobby({ onImportClick }: LobbyProps) {
 
         {/* Action Center - Pill Input */}
         <form
-          onSubmit={handleStart}
+          onSubmit={(e) => void handleStart(e)}
           className="w-full max-w-xl group relative"
         >
           <div className="relative flex items-center bg-white/80 backdrop-blur-2xl border border-white rounded-[40px] p-2.5 shadow-[0_20px_50px_rgba(45,36,30,0.08)] transition-all duration-500 hover:shadow-[0_25px_60px_rgba(45,36,30,0.12)]">
@@ -103,6 +103,7 @@ export function Lobby({ onImportClick }: LobbyProps) {
 
         {/* Import Button */}
         <button
+          type="button"
           onClick={onImportClick}
           disabled={isLoading}
           className="flex items-center space-x-2 text-[#6B5E55] hover:text-[#2D241E] font-bold text-sm tracking-wide transition-all uppercase active:scale-95 disabled:opacity-50"

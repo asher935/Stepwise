@@ -83,9 +83,11 @@ export function ExportModal({ open, onOpenChange, guideTitle, setGuideTitle }: E
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-      <div
-        className="absolute inset-0 bg-[#2D241E]/20 backdrop-blur-md animate-in fade-in duration-500"
+      <button
+        type="button"
+        className="absolute inset-0 bg-[#2D241E]/20 backdrop-blur-md animate-in fade-in duration-500 cursor-default border-0"
         onClick={() => onOpenChange(false)}
+        aria-label="Close modal"
       />
 
       <div className="relative w-full max-w-2xl bg-white/90 backdrop-blur-3xl border border-white rounded-[48px] overflow-hidden shadow-[0_40px_100px_rgba(45,36,30,0.15)] animate-in zoom-in-95 duration-500">
@@ -102,6 +104,7 @@ export function ExportModal({ open, onOpenChange, guideTitle, setGuideTitle }: E
               <p className="text-[#6B5E55] font-medium text-sm">Select all the formats you need for your guide.</p>
             </div>
             <button
+              type="button"
               onClick={() => onOpenChange(false)}
               className="w-12 h-12 flex items-center justify-center bg-white hover:bg-[#FDF2E9] border border-black/5 rounded-full transition-all active:scale-90 shadow-sm"
             >
@@ -111,10 +114,11 @@ export function ExportModal({ open, onOpenChange, guideTitle, setGuideTitle }: E
 
           <div className="space-y-8">
             <div className="space-y-3">
-              <label className="text-[10px] font-black text-[#BBAFA7] uppercase tracking-widest ml-4">
+              <label htmlFor="export-guide-title" className="text-[10px] font-black text-[#BBAFA7] uppercase tracking-widest ml-4">
                 Guide Title
               </label>
               <input
+                id="export-guide-title"
                 type="text"
                 value={guideTitle}
                 onChange={(e) => setGuideTitle(e.target.value)}
@@ -139,11 +143,12 @@ export function ExportModal({ open, onOpenChange, guideTitle, setGuideTitle }: E
 
             {hasStepwise && (
               <div className="space-y-3 animate-in slide-in-from-top-4 duration-500">
-                <label className="text-[10px] font-black text-[#BBAFA7] uppercase tracking-widest ml-4">
+                <label htmlFor="export-password" className="text-[10px] font-black text-[#BBAFA7] uppercase tracking-widest ml-4">
                   Privacy Password (Stepwise Format)
                 </label>
                 <div className="relative group">
                   <input
+                    id="export-password"
                     type={showPassword ? 'text' : 'password'}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
@@ -162,7 +167,8 @@ export function ExportModal({ open, onOpenChange, guideTitle, setGuideTitle }: E
             )}
 
             <button
-              onClick={handleExport}
+              type="button"
+              onClick={() => void handleExport()}
               disabled={isExporting || selectedFormats.length === 0}
               className={`
                 w-full py-6 rounded-[32px] font-black text-lg transition-all active:scale-95 flex items-center justify-center space-x-3

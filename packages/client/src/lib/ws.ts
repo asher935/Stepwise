@@ -3,6 +3,7 @@ import type {
   ServerMessage,
 } from '@stepwise/shared';
 import { WS_CLOSE_CODES } from '@stepwise/shared';
+import { getRuntimeConfig } from './runtime';
 
 type MessageHandler = (message: ServerMessage) => void;
 type ConnectionHandler = () => void;
@@ -32,10 +33,8 @@ class WebSocketClient {
   private doConnect(): void {
     if (!this.sessionId || !this.token) return;
 
-    const isDev = window.location.port === '5173';
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = isDev ? 'localhost:3000' : window.location.host;
-    const url = `${protocol}//${host}/ws?sessionId=${this.sessionId}&token=${this.token}`;
+    const runtimeConfig = getRuntimeConfig();
+    const url = `${runtimeConfig.wsBaseUrl}?sessionId=${this.sessionId}&token=${this.token}`;
 
     this.currentUrl = url;
     this.ws = new WebSocket(url);

@@ -4,7 +4,7 @@ const promises_1 = require("node:fs/promises");
 const node_path_1 = require("node:path");
 const promises_2 = require("node:timers/promises");
 const node_child_process_1 = require("node:child_process");
-const promises_3 = require("node:fs/promises");
+const node_url_1 = require("node:url");
 const electron_1 = require("electron");
 const DESKTOP_BACKEND_PORT = Number(process.env['STEPWISE_DESKTOP_PORT'] ?? '43123');
 let mainWindow = null;
@@ -22,9 +22,67 @@ function getBundlePath(...segments) {
     return (0, node_path_1.join)(basePath, ...segments);
 }
 async function getBundledBrowserPath() {
-    const metadataPath = getBundlePath('browser.json');
-    const metadata = JSON.parse(await (0, promises_3.readFile)(metadataPath, 'utf8'));
-    return getBundlePath(metadata.executablePath);
+    if (process.env['CHROME_BIN']) {
+        return process.env['CHROME_BIN'];
+    }
+    const browsersPath = (0, node_path_1.join)(electron_1.app.getPath('userData'), 'ms-playwright');
+    const registryModuleUrl = (0, node_url_1.pathToFileURL)(getBundlePath('node_modules', 'playwright-core', 'lib', 'server', 'registry', 'index.js')).href;
+    const cliPath = getBundlePath('node_modules', 'playwright-core', 'cli.js');
+    const resolveScript = [
+        `import { registry } from ${JSON.stringify(registryModuleUrl)};`,
+        `const executable = registry.findExecutable('chromium');`,
+        `if (!executable) throw new Error('Chromium executable is unavailable');`,
+        `const executablePath = executable.executablePath('javascript');`,
+        `if (!executablePath) throw new Error('Chromium browser is not installed');`,
+        `console.log(executablePath);`,
+    ].join('\n');
+    try {
+        const resolvedPath = await runBundledCommand(['--eval', resolveScript], {
+            PLAYWRIGHT_BROWSERS_PATH: browsersPath,
+        });
+        return resolvedPath.trim().split('\n').pop() ?? '';
+    }
+    catch {
+        await runBundledCommand([cliPath, 'install', 'chromium'], {
+            PLAYWRIGHT_BROWSERS_PATH: browsersPath,
+        });
+        const installedPath = await runBundledCommand(['--eval', resolveScript], {
+            PLAYWRIGHT_BROWSERS_PATH: browsersPath,
+        });
+        return installedPath.trim().split('\n').pop() ?? '';
+    }
+}
+async function runBundledCommand(args, extraEnv) {
+    const bunBinaryName = process.platform === 'win32' ? 'bun.exe' : 'bun';
+    const bunBinary = getBundlePath('bin', bunBinaryName);
+    return new Promise((resolve, reject) => {
+        const child = (0, node_child_process_1.spawn)(bunBinary, args, {
+            cwd: getBundlePath(),
+            env: {
+                ...process.env,
+                ...extraEnv,
+            },
+            stdio: ['ignore', 'pipe', 'pipe'],
+        });
+        let stdout = '';
+        let stderr = '';
+        child.stdout.on('data', (chunk) => {
+            stdout += chunk.toString();
+        });
+        child.stderr.on('data', (chunk) => {
+            stderr += chunk.toString();
+        });
+        child.once('error', (error) => {
+            reject(error);
+        });
+        child.once('exit', (code) => {
+            if (code === 0) {
+                resolve(stdout);
+                return;
+            }
+            reject(new Error(stderr.trim() || stdout.trim() || `Bundled command failed with code ${code ?? -1}`));
+        });
+    });
 }
 async function waitForBackend() {
     const healthUrl = `${getBackendOrigin()}/api/health`;

@@ -13,6 +13,11 @@ const bunBinaryName = process.platform === 'win32' ? 'bun.exe' : 'bun';
 async function generateIconFromSvg() {
   const svgPath = join(repoRoot, 'packages', 'shared', 'stepwise-logo.svg');
   const iconPath = join(desktopDir, 'icon.png');
+
+  if (await exists(iconPath)) {
+    return;
+  }
+
   const svgContent = await readFile(svgPath, 'utf8');
   const browser = await chromium.launch();
   const page = await browser.newPage();

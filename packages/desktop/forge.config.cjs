@@ -58,6 +58,9 @@ module.exports = {
       platforms: ['linux'],
       config: {
         options: {
+          name: 'stepwise-desktop',
+          productName: 'Stepwise',
+          bin: 'stepwise-desktop',
           maintainer: 'Asher Leong',
           homepage: 'https://github.com/asher935/stepwise',
           categories: ['Utility', 'Development'],

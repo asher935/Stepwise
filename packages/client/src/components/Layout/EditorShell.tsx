@@ -47,11 +47,12 @@ export function EditorShell() {
     <div className="flex flex-col h-screen bg-[#FDF2E9] overflow-hidden text-[#2D241E]">
       {/* Header */}
       <header className="h-20 border-b border-black/5 bg-white/40 backdrop-blur-xl px-6 flex items-center justify-between z-50">
-        <div className="flex items-center space-x-6">
-          <button
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="w-10 h-10 flex items-center justify-center hover:bg-white/60 rounded-full text-[#2D241E] transition-all active:scale-90"
-          >
+          <div className="flex items-center space-x-6">
+            <button
+              type="button"
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              className="w-10 h-10 flex items-center justify-center hover:bg-white/60 rounded-full text-[#2D241E] transition-all active:scale-90"
+            >
             {sidebarOpen ? <X size={20} /> : <Menu size={20} />}
           </button>
           <div className="flex flex-col">
@@ -76,6 +77,7 @@ export function EditorShell() {
           </div>
 
           <button
+            type="button"
             onClick={() => setShowImport(true)}
             className="flex items-center px-6 py-3 bg-white hover:bg-[#FDF2E9] border border-white rounded-full text-sm font-bold shadow-sm transition active:scale-95"
           >
@@ -84,6 +86,7 @@ export function EditorShell() {
           </button>
 
           <button
+            type="button"
             onClick={() => setShowExport(true)}
             className="flex items-center px-6 py-3 bg-white hover:bg-[#FDF2E9] border border-white rounded-full text-sm font-bold shadow-sm transition active:scale-95"
             disabled={steps.length === 0}
@@ -93,6 +96,7 @@ export function EditorShell() {
           </button>
 
           <button
+            type="button"
             onClick={() => setShowFinish(true)}
             className="flex items-center px-6 py-3 bg-[#2D241E] hover:bg-[#1A1512] text-white rounded-full text-sm font-bold shadow-lg transition active:scale-95"
           >
@@ -144,9 +148,11 @@ export function EditorShell() {
       {/* Finish Modal */}
       {showFinish && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div
-            className="absolute inset-0 bg-[#2D241E]/20 backdrop-blur-md animate-in fade-in duration-500"
+          <button
+            type="button"
+            className="absolute inset-0 bg-[#2D241E]/20 backdrop-blur-md animate-in fade-in duration-500 cursor-default border-0"
             onClick={() => setShowFinish(false)}
+            aria-label="Close modal"
           />
 
           <div className="relative w-full max-w-md bg-white/90 backdrop-blur-3xl border border-white rounded-[48px] overflow-hidden shadow-[0_40px_100px_rgba(45,36,30,0.15)] animate-in zoom-in-95 duration-500">
@@ -168,6 +174,7 @@ export function EditorShell() {
 
               <div className="flex flex-col space-y-3">
                 <button
+                  type="button"
                   onClick={() => void handleConfirmFinish()}
                   className="w-full py-5 bg-[#2D241E] hover:bg-[#1A1512] text-white rounded-[28px] font-black text-base shadow-xl shadow-[#2D241E]/10 transition-all active:scale-95 flex items-center justify-center space-x-2"
                 >
@@ -175,6 +182,7 @@ export function EditorShell() {
                   <span>I Understand, End Session</span>
                 </button>
                 <button
+                  type="button"
                   onClick={() => setShowFinish(false)}
                   className="w-full py-5 bg-white hover:bg-[#FDF2E9] border border-black/5 rounded-[28px] font-black text-base text-[#6B5E55] transition-all active:scale-95"
                 >
@@ -201,12 +209,14 @@ export function EditorShell() {
 
               <div className="flex flex-col space-y-3">
                 <button
+                  type="button"
                   onClick={extendSession}
                   className="w-full py-5 bg-[#2D241E] hover:bg-[#1A1512] text-white rounded-[28px] font-black text-base shadow-xl shadow-[#2D241E]/10 transition-all active:scale-95"
                 >
                   Keep Session Alive
                 </button>
                 <button
+                  type="button"
                   onClick={clearExpiryWarning}
                   className="w-full py-5 bg-white hover:bg-[#FDF2E9] border border-black/5 rounded-[28px] font-black text-base text-[#6B5E55] transition-all active:scale-95"
                 >

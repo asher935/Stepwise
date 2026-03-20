@@ -586,12 +586,12 @@ export function EditStepModal({ open, onOpenChange, screenshotDataUrl, fullScree
                   )}
                 </div>
 
-                <div
-                  className="mt-3 max-h-56 overflow-y-auto space-y-2 pr-1"
+                <ul
+                  className="mt-3 max-h-56 overflow-y-auto space-y-2 pr-1 list-none"
                   onMouseLeave={() => setHoveredLegendBubbleNumber(null)}
                 >
                   {displayedLegendItems.map((item) => (
-                    <div
+                    <li
                       key={`${item.bubbleNumber}:${item.label}`}
                       className="flex items-center justify-between rounded-xl bg-white/70 px-3 py-2 border border-black/5"
                       onMouseEnter={() => setHoveredLegendBubbleNumber(item.bubbleNumber)}
@@ -617,9 +617,9 @@ export function EditStepModal({ open, onOpenChange, screenshotDataUrl, fullScree
                           Remove
                         </button>
                       )}
-                    </div>
+                    </li>
                   ))}
-                </div>
+                </ul>
               </div>
             </div>
           )}

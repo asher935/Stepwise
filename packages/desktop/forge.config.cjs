@@ -1,3 +1,5 @@
+const appIcon = process.platform === 'win32' ? './icon.ico' : './icon.icns';
+
 function shouldIgnore(filePath) {
   const normalized = filePath.replace(/\\/g, '/');
 
@@ -29,7 +31,7 @@ module.exports = {
     asar: false,
     executableName: 'stepwise-desktop',
     ignore: shouldIgnore,
-    icon: './icon.icns',
+    icon: appIcon,
     name: 'stepwise-desktop',
   },
   makers: [
@@ -40,11 +42,12 @@ module.exports = {
         authors: 'Asher Leong',
         description: 'Desktop recorder and replay tool for browser workflows.',
         setupExe: 'Stepwise Setup.exe',
+        setupIcon: './icon.ico',
       },
     },
     {
       name: '@electron-forge/maker-zip',
-      platforms: ['darwin', 'linux', 'win32'],
+      platforms: ['linux', 'win32'],
     },
     {
       name: '@electron-forge/maker-dmg',

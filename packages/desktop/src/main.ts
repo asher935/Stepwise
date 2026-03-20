@@ -9,6 +9,7 @@ import { app, BrowserWindow } from 'electron';
 const DESKTOP_BACKEND_PORT = Number(process.env['STEPWISE_DESKTOP_PORT'] ?? '43123');
 
 let mainWindow: BrowserWindow | null = null;
+let loadingWindow: BrowserWindow | null = null;
 let backendProcess: ChildProcessWithoutNullStreams | null = null;
 let isQuitting = false;
 let isStoppingBackend = false;
@@ -27,12 +28,186 @@ function getBundlePath(...segments: string[]): string {
   return join(basePath, ...segments);
 }
 
+function createLoadingWindow(): void {
+  if (loadingWindow && !loadingWindow.isDestroyed()) {
+    return;
+  }
+
+  loadingWindow = new BrowserWindow({
+    width: 520,
+    height: 320,
+    resizable: false,
+    maximizable: false,
+    minimizable: false,
+    fullscreenable: false,
+    center: true,
+    show: false,
+    title: 'Stepwise',
+    backgroundColor: '#f3efe6',
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+
+  const html = `<!DOCTYPE html>
+  <html lang="en">
+    <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <title>Stepwise</title>
+      <style>
+        :root {
+          color-scheme: light;
+          --bg: #f3efe6;
+          --panel: rgba(255, 252, 246, 0.82);
+          --text: #1e1a17;
+          --muted: #6d6258;
+          --accent: #d4683c;
+          --accent-soft: rgba(212, 104, 60, 0.16);
+          --border: rgba(30, 26, 23, 0.08);
+        }
+
+        * {
+          box-sizing: border-box;
+        }
+
+        body {
+          margin: 0;
+          min-height: 100vh;
+          display: grid;
+          place-items: center;
+          font-family: "Avenir Next", "Segoe UI", sans-serif;
+          background:
+            radial-gradient(circle at top left, rgba(212, 104, 60, 0.16), transparent 34%),
+            radial-gradient(circle at bottom right, rgba(35, 80, 126, 0.14), transparent 30%),
+            var(--bg);
+          color: var(--text);
+        }
+
+        .shell {
+          width: 100%;
+          height: 100%;
+          padding: 28px;
+          display: flex;
+          align-items: stretch;
+        }
+
+        .panel {
+          width: 100%;
+          border-radius: 24px;
+          padding: 28px 26px;
+          background: var(--panel);
+          border: 1px solid var(--border);
+          box-shadow: 0 18px 45px rgba(79, 61, 44, 0.12);
+          display: flex;
+          flex-direction: column;
+          gap: 18px;
+          justify-content: center;
+        }
+
+        .eyebrow {
+          font-size: 11px;
+          letter-spacing: 0.24em;
+          text-transform: uppercase;
+          color: var(--muted);
+        }
+
+        .title {
+          margin: 0;
+          font-size: 36px;
+          line-height: 1;
+          font-weight: 700;
+        }
+
+        .status {
+          margin: 0;
+          min-height: 52px;
+          font-size: 15px;
+          line-height: 1.5;
+          color: var(--muted);
+        }
+
+        .meter {
+          position: relative;
+          overflow: hidden;
+          height: 10px;
+          border-radius: 999px;
+          background: rgba(30, 26, 23, 0.08);
+        }
+
+        .meter::before {
+          content: "";
+          position: absolute;
+          inset: 0;
+          width: 42%;
+          border-radius: inherit;
+          background: linear-gradient(90deg, var(--accent), #f2a65a);
+          animation: sweep 1.4s ease-in-out infinite;
+        }
+
+        .hint {
+          font-size: 13px;
+          color: var(--muted);
+        }
+
+        @keyframes sweep {
+          0% { transform: translateX(-120%); }
+          100% { transform: translateX(320%); }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="shell">
+        <div class="panel">
+          <div class="eyebrow">Desktop Runtime</div>
+          <h1 class="title">Stepwise</h1>
+          <p class="status" id="status">Preparing application startup...</p>
+          <div class="meter" aria-hidden="true"></div>
+          <div class="hint">The first launch may take longer while the browser runtime is prepared.</div>
+        </div>
+      </div>
+      <script>
+        window.setStatus = (value) => {
+          const target = document.getElementById('status');
+          if (target) target.textContent = value;
+        };
+      </script>
+    </body>
+  </html>`;
+
+  void loadingWindow.loadURL(`data:text/html;charset=UTF-8,${encodeURIComponent(html)}`);
+  loadingWindow.once('ready-to-show', () => {
+    loadingWindow?.show();
+  });
+  loadingWindow.on('closed', () => {
+    loadingWindow = null;
+  });
+}
+
+function updateLoadingStatus(status: string): void {
+  if (!loadingWindow || loadingWindow.isDestroyed()) {
+    return;
+  }
+
+  void loadingWindow.webContents.executeJavaScript(`window.setStatus(${JSON.stringify(status)});`);
+}
+
+function closeLoadingWindow(): void {
+  if (!loadingWindow || loadingWindow.isDestroyed()) {
+    return;
+  }
+
+  loadingWindow.close();
+  loadingWindow = null;
+}
+
 async function getBundledBrowserPath(): Promise<string> {
   if (process.env['CHROME_BIN']) {
+    updateLoadingStatus('Using configured browser runtime...');
     return process.env['CHROME_BIN'];
   }
 
-  const browsersPath = join(app.getPath('userData'), 'ms-playwright');
   const registryModuleUrl = pathToFileURL(
     getBundlePath('node_modules', 'playwright-core', 'lib', 'server', 'registry', 'index.js')
   ).href;
@@ -41,28 +216,30 @@ async function getBundledBrowserPath(): Promise<string> {
     `import { registry } from ${JSON.stringify(registryModuleUrl)};`,
     `const executable = registry.findExecutable('chromium');`,
     `if (!executable) throw new Error('Chromium executable is unavailable');`,
-    `const executablePath = executable.executablePath('javascript');`,
-    `if (!executablePath) throw new Error('Chromium browser is not installed');`,
+    `const executablePath = executable.executablePathOrDie('javascript');`,
     `console.log(executablePath);`,
   ].join('\n');
 
   try {
-    const resolvedPath = await runBundledCommand(['--eval', resolveScript], {
-      PLAYWRIGHT_BROWSERS_PATH: browsersPath,
-    });
+    updateLoadingStatus('Checking local browser runtime...');
+    const resolvedPath = await runBundledCommand(['--eval', resolveScript], {});
     return resolvedPath.trim().split('\n').pop() ?? '';
   } catch {
-    await runBundledCommand([cliPath, 'install', 'chromium'], {
-      PLAYWRIGHT_BROWSERS_PATH: browsersPath,
+    updateLoadingStatus('Installing browser runtime for first launch...');
+    await runBundledCommand([cliPath, 'install', 'chromium'], {}, (message) => {
+      updateLoadingStatus(`Installing browser runtime...\n${message}`);
     });
-    const installedPath = await runBundledCommand(['--eval', resolveScript], {
-      PLAYWRIGHT_BROWSERS_PATH: browsersPath,
-    });
+    updateLoadingStatus('Finishing browser setup...');
+    const installedPath = await runBundledCommand(['--eval', resolveScript], {});
     return installedPath.trim().split('\n').pop() ?? '';
   }
 }
 
-async function runBundledCommand(args: string[], extraEnv: Record<string, string>): Promise<string> {
+async function runBundledCommand(
+  args: string[],
+  extraEnv: Record<string, string>,
+  onOutput?: (message: string) => void
+): Promise<string> {
   const bunBinaryName = process.platform === 'win32' ? 'bun.exe' : 'bun';
   const bunBinary = getBundlePath('bin', bunBinaryName);
 
@@ -78,13 +255,34 @@ async function runBundledCommand(args: string[], extraEnv: Record<string, string
 
     let stdout = '';
     let stderr = '';
+    let lastLine = '';
+
+    const pushChunk = (chunk: Buffer, target: 'stdout' | 'stderr') => {
+      const text = chunk.toString();
+      if (target === 'stdout') {
+        stdout += text;
+      } else {
+        stderr += text;
+      }
+
+      const lines = text
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean);
+
+      const nextLine = lines.at(-1);
+      if (nextLine && nextLine !== lastLine) {
+        lastLine = nextLine;
+        onOutput?.(nextLine);
+      }
+    };
 
     child.stdout.on('data', (chunk: Buffer) => {
-      stdout += chunk.toString();
+      pushChunk(chunk, 'stdout');
     });
 
     child.stderr.on('data', (chunk: Buffer) => {
-      stderr += chunk.toString();
+      pushChunk(chunk, 'stderr');
     });
 
     child.once('error', (error) => {
@@ -132,9 +330,11 @@ async function startBundledBackend(): Promise<void> {
   const bunBinaryName = process.platform === 'win32' ? 'bun.exe' : 'bun';
   const bunBinary = getBundlePath('bin', bunBinaryName);
   const serverEntry = getBundlePath('server', 'index.js');
+  updateLoadingStatus('Preparing browser runtime...');
   const browserPath = await getBundledBrowserPath();
 
   await mkdir(tempDir, { recursive: true });
+  updateLoadingStatus('Starting local backend...');
 
   backendProcess = spawn(bunBinary, [serverEntry], {
     cwd: getBundlePath(),
@@ -164,6 +364,7 @@ async function startBundledBackend(): Promise<void> {
     }
   });
 
+  updateLoadingStatus('Waiting for backend health check...');
   await waitForBackend();
 }
 
@@ -190,7 +391,9 @@ async function stopBundledBackend(): Promise<void> {
 }
 
 async function createMainWindow(): Promise<void> {
+  createLoadingWindow();
   await startBundledBackend();
+  updateLoadingStatus('Opening application...');
 
   mainWindow = new BrowserWindow({
     width: 1440,
@@ -208,6 +411,7 @@ async function createMainWindow(): Promise<void> {
   await mainWindow.loadURL(getRendererUrl());
 
   mainWindow.once('ready-to-show', () => {
+    closeLoadingWindow();
     mainWindow?.show();
   });
 

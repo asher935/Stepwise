@@ -13,8 +13,26 @@ if (!platform || !arch) {
   throw new Error('STEPWISE_RELEASE_PLATFORM and STEPWISE_RELEASE_ARCH are required');
 }
 
-const allowedExtensions = new Set(['.dmg', '.zip', '.exe', '.nupkg', '.deb']);
-const allowedNames = new Set(['RELEASES']);
+const allowedArtifactsByPlatform = {
+  darwin: {
+    extensions: new Set(['.dmg']),
+    names: new Set(),
+  },
+  win32: {
+    extensions: new Set(['.exe']),
+    names: new Set(),
+  },
+  linux: {
+    extensions: new Set(['.deb']),
+    names: new Set(),
+  },
+};
+
+const allowedArtifacts = allowedArtifactsByPlatform[platform];
+
+if (!allowedArtifacts) {
+  throw new Error(`Unsupported platform: ${platform}`);
+}
 
 async function walk(dir) {
   const entries = await readdir(dir, { withFileTypes: true });
@@ -49,13 +67,13 @@ for (const file of files) {
     continue;
   }
 
-  if (!allowedExtensions.has(extension) && !allowedNames.has(name)) {
+  if (!allowedArtifacts.extensions.has(extension) && !allowedArtifacts.names.has(name)) {
     continue;
   }
 
   let targetName;
 
-  if (allowedNames.has(name)) {
+  if (allowedArtifacts.names.has(name)) {
     targetName = `stepwise-${platform}-${arch}-${name}`;
   } else if (extension === '.exe') {
     targetName = `stepwise-${platform}-${arch}-setup.exe`;

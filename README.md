@@ -230,12 +230,12 @@ Examples:
 This repository includes a GitHub Actions workflow at [`.github/workflows/release-desktop.yml`](.github/workflows/release-desktop.yml) that builds native desktop artifacts and uploads them to GitHub Releases.
 
 It publishes:
-- macOS Intel: `.dmg` and `.zip`
-- macOS Apple Silicon: `.dmg` and `.zip`
-- Windows x64: `Setup.exe`, `.nupkg`, `RELEASES`, and `.zip`
-- Windows ARM64: `Setup.exe`, `.nupkg`, `RELEASES`, and `.zip`
-- Linux x64: `.deb` and `.zip`
-- Linux ARM64: `.deb` and `.zip`
+- macOS Intel: `.dmg`
+- macOS Apple Silicon: `.dmg`
+- Windows x64: `Setup.exe`
+- Windows ARM64: `Setup.exe`
+- Linux x64: `.deb`
+- Linux ARM64: `.deb`
 
 **How to cut a release:**
 
@@ -252,7 +252,7 @@ After that, GitHub Actions will:
 **Important limitations:**
 - macOS builds are not notarized yet, so Gatekeeper warnings will appear until Apple signing and notarization are added.
 - Windows builds are not code-signed yet, so SmartScreen warnings will appear until a signing certificate is configured.
-- Linux `.deb` packages are suitable for Debian/Ubuntu-style distributions; the `.zip` assets remain the broadest fallback for other distributions.
+- Linux `.deb` packages are suitable for Debian/Ubuntu-style distributions.
 
 ---
 

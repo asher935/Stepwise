@@ -1,0 +1,28 @@
+{
+  "name": "@stepwise/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "main": "main.js",
+  "config": {
+    "forge": "./forge.config.cjs"
+  },
+  "scripts": {
+    "build:deps": "bun run --filter @stepwise/shared build && bun run --filter @stepwise/server build && bun run --filter @stepwise/client build",
+    "build": "bun run build:deps && tsc -b --force tsconfig.json && bun run scripts/sync-entrypoints.mjs && bun run scripts/prepare-bundle.mjs",
+    "dev": "bun run build && STEPWISE_RENDERER_URL=http://127.0.0.1:5173 STEPWISE_BACKEND_URL=http://127.0.0.1:3000 electron .",
+    "package": "bun run build && electron-forge package",
+    "make": "bun run build && electron-forge make",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src scripts"
+  },
+  "dependencies": {
+    "@stepwise/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "electron": "^41.0.3",
+    "playwright": "^1.58.2",
+    "playwright-core": "^1.58.2",
+    "typescript": "^5.9.3"
+  }
+}

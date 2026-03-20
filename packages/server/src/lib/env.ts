@@ -1,3 +1,5 @@
+import { getDefaultTempDir } from './runtime.js';
+
 import { DEFAULTS } from '@stepwise/shared';
 
 function getEnvNumber(key: string, defaultValue: number): number {
@@ -32,7 +34,7 @@ export const env = {
   SESSION_TOKEN_BYTES: getEnvNumber('SESSION_TOKEN_BYTES', DEFAULTS.SESSION_TOKEN_BYTES),
   TYPING_DEBOUNCE_MS: getEnvNumber('TYPING_DEBOUNCE_MS', DEFAULTS.TYPING_DEBOUNCE_MS),
   NODE_ENV: getEnvString('NODE_ENV', 'development'),
-  TEMP_DIR: getEnvString('TEMP_DIR', '/tmp/stepwise'),
+  TEMP_DIR: getEnvString('TEMP_DIR', getDefaultTempDir()),
 } as const;
 
 export type Env = typeof env;

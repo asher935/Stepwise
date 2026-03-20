@@ -166,6 +166,64 @@ Edit `docker/docker-compose.prod.yml` to adjust:
 
 ---
 
+### 4. Electron Desktop (macOS / Windows)
+
+Build Stepwise as a native desktop application without changing the existing Docker or web deployment flow.
+
+**Prerequisites:**
+- [Bun](https://bun.sh/) runtime (v1+)
+- macOS for `.app` packaging, or Windows for `.exe` packaging
+
+**Development mode:**
+
+```bash
+# Clone the repository
+git clone https://github.com/asher935/stepwise.git
+cd stepwise
+
+# Install dependencies
+bun install
+
+# Start backend + frontend dev servers and launch Electron
+bun run dev:desktop
+```
+
+This starts:
+- Vite client on `http://localhost:5173`
+- Bun backend on `http://localhost:3000`
+- Electron pointed at those local dev servers
+
+**Build desktop assets:**
+
+```bash
+# Build shared, server, client, and desktop packages
+bun run build:desktop
+```
+
+**Package the desktop app:**
+
+```bash
+# Create a packaged desktop app for the current platform
+bun run package:desktop
+```
+
+Packaged output is written to `packages/desktop/out/`.
+
+Examples:
+- macOS: `packages/desktop/out/@stepwise-desktop-darwin-arm64/@stepwise-desktop.app`
+- Windows: Electron Forge will produce a packaged app and, when using `bun run package:desktop` on Windows, the Windows output under `packages/desktop/out/`
+
+**Notes:**
+- The desktop app bundles a local Bun sidecar server and a Playwright browser runtime.
+- Docker deployment is unchanged; the Electron build is an additional target.
+
+**Windows notes:**
+- Run `bun run package:desktop` on Windows to generate the Windows desktop build artifacts.
+- Electron Forge will place the packaged Windows output in `packages/desktop/out/`.
+- These builds are currently intended for local or internal distribution and are not code-signed yet, so Windows SmartScreen may show a warning until signing is added.
+
+---
+
 ## Environment Configuration
 
 ### Local & Development Docker
@@ -213,11 +271,12 @@ stepwise/
 │   │   │   ├── ws/        # WebSocket handlers
 │   │   │   └── lib/       # Utilities
 │   │   └── templates/     # Export templates
-│   └── client/            # React frontend
+│   ├── client/            # React frontend
 │       └── src/
 │           ├── components/
 │           ├── stores/
 │           └── lib/
+│   └── desktop/           # Electron shell and packaging
 └── docs/                  # Documentation and plans
 ```
 
@@ -265,7 +324,11 @@ stepwise/
 bun run dev          # Start all dev servers (backend + frontend)
 bun run dev:server   # Start backend only on :3000
 bun run dev:client   # Start frontend only on :5173
+bun run dev:desktop  # Start backend + frontend dev servers and launch Electron
 bun run build        # Build all packages
+bun run build:desktop # Build the desktop target and bundled resources
+bun run package:desktop # Package the Electron app for the current platform
+bun run smoke:desktop # Run a packaging-oriented desktop smoke build
 bun run typecheck    # Type check all packages
 bun run lint         # Lint all packages
 bun run clean        # Clean build artifacts

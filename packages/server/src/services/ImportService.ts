@@ -112,9 +112,9 @@ export class ImportService {
           const type = entry.type;
 
           if (type === 'File') {
-            const chunks: Buffer[] = [];
+            const chunks: Uint8Array[] = [];
 
-            entry.on('data', (chunk: Buffer) => chunks.push(chunk));
+            entry.on('data', (chunk: Uint8Array) => chunks.push(chunk));
             entry.on('end', () => {
               const content = Buffer.concat(chunks);
 

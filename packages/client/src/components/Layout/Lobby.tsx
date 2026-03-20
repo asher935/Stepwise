@@ -1,5 +1,5 @@
-import { useState, useCallback } from 'react';
-import { Play, Lock, Layers, ShieldCheck, Search, FileUp, Shield } from 'lucide-react';
+import { useCallback, useState } from 'react';
+import { FileUp, Layers, Lock, Play, Search, Shield, ShieldCheck } from 'lucide-react';
 import { useSessionStore } from '@/stores/sessionStore';
 
 interface LobbyProps {
@@ -32,11 +32,9 @@ export function Lobby({ onImportClick }: LobbyProps) {
             <Shield className="w-3.5 h-3.5 mr-2" />
             100% Private & Local
           </div>
-          <img
-            src="/stepwise-logo.svg"
-            alt="Stepwise Logo"
-            className="w-48 md:w-64 h-auto"
-          />
+         <h1 className="text-6xl md:text-8xl font-black tracking-tight text-[#2D241E]">
+    Stepwise<span className="text-[#E67E22]">!</span>
+  </h1>
           <p className="text-xl text-[#6B5E55] max-w-xl mx-auto leading-relaxed font-medium">
             Turn your browser interactions into beautiful, <br />structured guides automatically.
           </p>
@@ -105,6 +103,7 @@ export function Lobby({ onImportClick }: LobbyProps) {
 
         {/* Import Button */}
         <button
+          type="button"
           onClick={onImportClick}
           disabled={isLoading}
           className="flex items-center space-x-2 text-[#6B5E55] hover:text-[#2D241E] font-bold text-sm tracking-wide transition-all uppercase active:scale-95 disabled:opacity-50"

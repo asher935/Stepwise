@@ -2,6 +2,9 @@
   "name": "@stepwise/desktop",
   "version": "0.1.0",
   "private": true,
+  "productName": "Stepwise",
+  "description": "Desktop recorder and replay tool for browser workflows.",
+  "author": "Asher Leong",
   "type": "commonjs",
   "main": "main.js",
   "config": {

@@ -37,11 +37,32 @@ module.exports = {
       name: '@electron-forge/maker-squirrel',
       config: {
         name: 'Stepwise',
+        authors: 'Asher Leong',
+        description: 'Desktop recorder and replay tool for browser workflows.',
+        setupExe: 'Stepwise Setup.exe',
       },
     },
     {
       name: '@electron-forge/maker-zip',
       platforms: ['darwin', 'linux', 'win32'],
+    },
+    {
+      name: '@electron-forge/maker-dmg',
+      config: {
+        format: 'ULFO',
+      },
+    },
+    {
+      name: '@electron-forge/maker-deb',
+      platforms: ['linux'],
+      config: {
+        options: {
+          maintainer: 'Asher Leong',
+          homepage: 'https://github.com/asher935/stepwise',
+          categories: ['Utility', 'Development'],
+          icon: './icon.png',
+        },
+      },
     },
   ],
 };

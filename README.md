@@ -166,13 +166,15 @@ Edit `docker/docker-compose.prod.yml` to adjust:
 
 ---
 
-### 4. Electron Desktop (macOS / Windows)
+### 4. Electron Desktop (macOS / Windows / Linux)
 
 Build Stepwise as a native desktop application without changing the existing Docker or web deployment flow.
 
 **Prerequisites:**
 - [Bun](https://bun.sh/) runtime (v1+)
-- macOS for `.app` packaging, or Windows for `.exe` packaging
+- macOS for `.app` / `.dmg` packaging
+- Windows for `.exe` packaging
+- Linux for `.deb` / `.zip` packaging
 
 **Development mode:**
 
@@ -212,6 +214,7 @@ Packaged output is written to `packages/desktop/out/`.
 Examples:
 - macOS: `packages/desktop/out/@stepwise-desktop-darwin-arm64/@stepwise-desktop.app`
 - Windows: Electron Forge will produce a packaged app and, when using `bun run package:desktop` on Windows, the Windows output under `packages/desktop/out/`
+- Linux: Electron Forge will produce `.deb` and `.zip` artifacts under `packages/desktop/out/make/`
 
 **Notes:**
 - The desktop app bundles a local Bun sidecar server and a Playwright browser runtime.
@@ -221,6 +224,35 @@ Examples:
 - Run `bun run package:desktop` on Windows to generate the Windows desktop build artifacts.
 - Electron Forge will place the packaged Windows output in `packages/desktop/out/`.
 - These builds are currently intended for local or internal distribution and are not code-signed yet, so Windows SmartScreen may show a warning until signing is added.
+
+### 5. GitHub Releases for Desktop Downloads
+
+This repository includes a GitHub Actions workflow at [`.github/workflows/release-desktop.yml`](.github/workflows/release-desktop.yml) that builds native desktop artifacts and uploads them to GitHub Releases.
+
+It publishes:
+- macOS Intel: `.dmg` and `.zip`
+- macOS Apple Silicon: `.dmg` and `.zip`
+- Windows x64: `Setup.exe`, `.nupkg`, `RELEASES`, and `.zip`
+- Windows ARM64: `Setup.exe`, `.nupkg`, `RELEASES`, and `.zip`
+- Linux x64: `.deb` and `.zip`
+- Linux ARM64: `.deb` and `.zip`
+
+**How to cut a release:**
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+After that, GitHub Actions will:
+- build each platform on a native runner
+- create or update the GitHub Release for that tag
+- upload the desktop artifacts as downloadable release assets
+
+**Important limitations:**
+- macOS builds are not notarized yet, so Gatekeeper warnings will appear until Apple signing and notarization are added.
+- Windows builds are not code-signed yet, so SmartScreen warnings will appear until a signing certificate is configured.
+- Linux `.deb` packages are suitable for Debian/Ubuntu-style distributions; the `.zip` assets remain the broadest fallback for other distributions.
 
 ---
 

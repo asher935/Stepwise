@@ -27,7 +27,6 @@ function shouldIgnore(filePath) {
 module.exports = {
   packagerConfig: {
     asar: false,
-    extraResource: ['.bundle'],
     executableName: 'stepwise-desktop',
     ignore: shouldIgnore,
     icon: './icon.icns',

@@ -22,9 +22,7 @@ function getRendererUrl(): string {
 }
 
 function getBundlePath(...segments: string[]): string {
-  const basePath = app.isPackaged
-    ? join(process.resourcesPath, '.bundle')
-    : join(app.getAppPath(), '.bundle');
+  const basePath = join(app.getAppPath(), '.bundle');
 
   return join(basePath, ...segments);
 }

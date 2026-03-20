@@ -18,9 +18,7 @@ function getRendererUrl() {
     return process.env['STEPWISE_RENDERER_URL'] ?? getBackendOrigin();
 }
 function getBundlePath(...segments) {
-    const basePath = electron_1.app.isPackaged
-        ? (0, node_path_1.join)(process.resourcesPath, '.bundle')
-        : (0, node_path_1.join)(electron_1.app.getAppPath(), '.bundle');
+    const basePath = (0, node_path_1.join)(electron_1.app.getAppPath(), '.bundle');
     return (0, node_path_1.join)(basePath, ...segments);
 }
 async function getBundledBrowserPath() {

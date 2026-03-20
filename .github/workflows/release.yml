@@ -1,0 +1,85 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            platform: darwin
+            arch: x64
+            artifact_name: stepwise-macos-x64
+          - os: macos-latest
+            platform: darwin
+            arch: arm64
+            artifact_name: stepwise-macos-arm64
+          - os: windows-latest
+            platform: win32
+            arch: x64
+            artifact_name: stepwise-win32-x64
+          - os: ubuntu-latest
+            platform: linux
+            arch: x64
+            artifact_name: stepwise-linux-x64
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build all packages
+        run: bun run build:desktop
+
+      - name: Package Electron app
+        run: bun run package:desktop
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: packages/desktop/out/make/zip/${{ matrix.platform }}/${{ matrix.arch }}/
+          retention-days: 5
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Display structure of downloaded files
+        run: ls -R artifacts/
+
+      - name: Flatten artifact directories
+        run: |
+          mkdir -p release_files
+          for dir in artifacts/stepwise-*; do
+            if [ -d "$dir" ]; then
+              cp "$dir"/*/*.zip release_files/ 2>/dev/null || cp "$dir"/*/*/*.zip release_files/ 2>/dev/null || true
+            fi
+          done
+          ls -la release_files/
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release_files/*.zip
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

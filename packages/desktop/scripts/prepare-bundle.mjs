@@ -1,4 +1,4 @@
-import { cp, chmod, copyFile, mkdir, rm, stat, writeFile } from 'node:fs/promises';
+import { cp, chmod, copyFile, mkdir, rm, stat, writeFile, readFile } from 'node:fs/promises';
 import { basename, dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -9,6 +9,27 @@ const desktopDir = join(scriptDir, '..');
 const repoRoot = join(desktopDir, '..', '..');
 const bundleDir = join(desktopDir, '.bundle');
 const bunBinaryName = process.platform === 'win32' ? 'bun.exe' : 'bun';
+
+async function generateIconFromSvg() {
+  const svgPath = join(repoRoot, 'packages', 'shared', 'stepwise-logo.svg');
+  const iconPath = join(desktopDir, 'icon.png');
+  const svgContent = await readFile(svgPath, 'utf8');
+  const browser = await chromium.launch();
+  const page = await browser.newPage();
+  await page.setContent(`<!DOCTYPE html><html><body style="margin:0">${svgContent}</body></html>`);
+  const svgElement = await page.locator('svg').first();
+  const screenshot = await svgElement.screenshot({ type: 'png' });
+  await writeFile(iconPath, screenshot);
+  await browser.close();
+  console.log('Generated icon.png from stepwise-logo.svg');
+}
+
+async function copyIconToBundle() {
+  const iconPath = join(desktopDir, 'icon.png');
+  if (await exists(iconPath)) {
+    await cp(iconPath, join(bundleDir, 'icon.png'), { force: true });
+  }
+}
 
 async function copyDirectory(source, target) {
   await cp(source, target, { recursive: true, force: true, dereference: true });
@@ -42,6 +63,8 @@ await mkdir(join(bundleDir, 'bin'), { recursive: true });
 await mkdir(join(bundleDir, 'server'), { recursive: true });
 await mkdir(join(bundleDir, 'client'), { recursive: true });
 await mkdir(join(bundleDir, 'node_modules'), { recursive: true });
+
+await generateIconFromSvg();
 
 const serverDist = join(repoRoot, 'packages', 'server', 'dist', 'index.js');
 const clientDist = join(repoRoot, 'packages', 'client', 'dist');
@@ -77,3 +100,5 @@ await writeFile(
 if (await exists(sharpImageDir)) {
   await copyDirectory(sharpImageDir, join(bundleDir, 'node_modules', '@img'));
 }
+
+await copyIconToBundle();

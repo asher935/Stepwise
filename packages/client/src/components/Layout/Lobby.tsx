@@ -32,9 +32,11 @@ export function Lobby({ onImportClick }: LobbyProps) {
             <Shield className="w-3.5 h-3.5 mr-2" />
             100% Private & Local
           </div>
-          <h1 className="text-6xl md:text-8xl font-black tracking-tight text-[#2D241E]">
-            Stepwise<span className="text-[#E67E22]">!</span>
-          </h1>
+          <img
+            src="/stepwise-logo.svg"
+            alt="Stepwise Logo"
+            className="w-48 md:w-64 h-auto"
+          />
           <p className="text-xl text-[#6B5E55] max-w-xl mx-auto leading-relaxed font-medium">
             Turn your browser interactions into beautiful, <br />structured guides automatically.
           </p>

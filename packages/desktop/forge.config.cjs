@@ -29,6 +29,8 @@ module.exports = {
     asar: false,
     extraResource: ['.bundle'],
     ignore: shouldIgnore,
+    icon: './icon.icns',
+    name: 'stepwise-desktop',
   },
   makers: [
     {

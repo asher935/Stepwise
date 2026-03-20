@@ -275,7 +275,7 @@ export function EditStepModal({ open, onOpenChange, screenshotDataUrl, fullScree
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-      handleSaveCaption();
+      void handleSaveCaption();
     }
   }, [handleSaveCaption]);
 
@@ -390,7 +390,7 @@ export function EditStepModal({ open, onOpenChange, screenshotDataUrl, fullScree
             <div className="flex items-center space-x-2">
               <button
                 type="button"
-                onClick={handleDownload}
+                onClick={() => void handleDownload()}
                 className="w-12 h-12 flex items-center justify-center bg-white hover:bg-[#FDF2E9] border border-black/5 rounded-full transition-all active:scale-90 shadow-sm"
                 title="Download screenshot"
               >
@@ -434,7 +434,7 @@ export function EditStepModal({ open, onOpenChange, screenshotDataUrl, fullScree
                   </button>
                   <button
                     type="button"
-                    onClick={handleSaveCaption}
+                    onClick={() => void handleSaveCaption()}
                     disabled={isSaving}
                     className={`
                       w-8 h-8 flex items-center justify-center rounded-full transition-all active:scale-90
@@ -491,7 +491,7 @@ export function EditStepModal({ open, onOpenChange, screenshotDataUrl, fullScree
                         w-12 h-7 rounded-full transition-colors duration-200 relative
                         ${redactEnabled ? 'bg-[#E67E22]' : 'bg-[#BBAFA7]'}
                       `}
-                      onClick={handleToggleRedaction}
+                      onClick={() => void handleToggleRedaction()}
                       role="switch"
                       aria-checked={redactEnabled}
                       aria-label="Toggle redaction"

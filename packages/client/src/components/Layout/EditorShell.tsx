@@ -168,7 +168,7 @@ export function EditorShell() {
 
               <div className="flex flex-col space-y-3">
                 <button
-                  onClick={handleConfirmFinish}
+                  onClick={() => void handleConfirmFinish()}
                   className="w-full py-5 bg-[#2D241E] hover:bg-[#1A1512] text-white rounded-[28px] font-black text-base shadow-xl shadow-[#2D241E]/10 transition-all active:scale-95 flex items-center justify-center space-x-2"
                 >
                   <LogOut size={20} />

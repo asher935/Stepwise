@@ -148,12 +148,12 @@ export function ImportModal({ open, onOpenChange, setGuideTitle }: ImportModalPr
               ref={fileInputRef}
               type="file"
               accept=".stepwise"
-              onChange={handleInputChange}
+              onChange={(e) => void handleInputChange(e)}
               className="hidden"
             />
             <div
               onClick={() => fileInputRef.current?.click()}
-              onDrop={handleDrop}
+              onDrop={(e) => void handleDrop(e)}
               onDragOver={handleDragOver}
               className={`
                 group relative border-2 border-dashed rounded-[40px] p-12 flex flex-col items-center justify-center transition-all cursor-pointer
@@ -213,7 +213,7 @@ export function ImportModal({ open, onOpenChange, setGuideTitle }: ImportModalPr
             )}
 
             <button
-              onClick={handleImport}
+              onClick={() => void handleImport()}
               disabled={!file || isImporting}
               className={`
                 w-full py-6 rounded-[32px] font-black text-lg transition-all active:scale-95 flex items-center justify-center space-x-3

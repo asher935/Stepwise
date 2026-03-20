@@ -92,7 +92,7 @@ export function StepCard({ step }: StepCardProps) {
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  handleDelete();
+                  void handleDelete();
                 }}
                 className="w-8 h-8 flex items-center justify-center text-[#BBAFA7] hover:text-red-500 transition-all rounded-full hover:bg-red-50"
               >

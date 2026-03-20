@@ -42,7 +42,7 @@ export function Lobby({ onImportClick }: LobbyProps) {
 
         {/* Action Center - Pill Input */}
         <form
-          onSubmit={handleStart}
+          onSubmit={(e) => void handleStart(e)}
           className="w-full max-w-xl group relative"
         >
           <div className="relative flex items-center bg-white/80 backdrop-blur-2xl border border-white rounded-[40px] p-2.5 shadow-[0_20px_50px_rgba(45,36,30,0.08)] transition-all duration-500 hover:shadow-[0_25px_60px_rgba(45,36,30,0.12)]">

@@ -162,7 +162,7 @@ export function ExportModal({ open, onOpenChange, guideTitle, setGuideTitle }: E
             )}
 
             <button
-              onClick={handleExport}
+              onClick={() => void handleExport()}
               disabled={isExporting || selectedFormats.length === 0}
               className={`
                 w-full py-6 rounded-[32px] font-black text-lg transition-all active:scale-95 flex items-center justify-center space-x-3

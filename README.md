@@ -9,6 +9,8 @@
 
 A Docker-deployable web application for recording browser actions into step-by-step guides with screenshots. Self-hosted alternative to Tango.ai.
 
+Now with a native app built on electron!
+
 
 
 ## Features
@@ -23,6 +25,7 @@ A Docker-deployable web application for recording browser actions into step-by-s
 
 ## Tech Stack
 
+- **Native App**: Electron
 - **Frontend**: React 18 + Vite + TypeScript + Tailwind CSS + Zustand
 - **Backend**: Bun + Elysia (WebSocket support)
 - **Browser Control**: Playwright with Chrome DevTools Protocol

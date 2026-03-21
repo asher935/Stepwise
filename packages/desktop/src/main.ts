@@ -5,6 +5,11 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 
 import { app, BrowserWindow } from 'electron';
+import electronSquirrelStartup from 'electron-squirrel-startup';
+
+if (electronSquirrelStartup) {
+  app.quit();
+}
 
 const DESKTOP_BACKEND_PORT = Number(process.env['STEPWISE_DESKTOP_PORT'] ?? '43123');
 

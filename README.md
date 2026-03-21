@@ -223,6 +223,20 @@ Examples:
 - The desktop app bundles a local Bun sidecar server and a Playwright browser runtime.
 - Docker deployment is unchanged; the Electron build is an additional target.
 
+**macOS notes:**
+- The macOS build is currently unsigned, so Gatekeeper may warn that the app cannot be opened because Apple cannot verify it.
+- For apps downloaded from GitHub Releases, open the `.dmg`, drag `Stepwise-desktop.app` into `Applications`, then try launching it once from Finder.
+- If macOS blocks it, open `System Settings` -> `Privacy & Security`, scroll to the security message for Stepwise, then click `Open Anyway`.
+- You can also right-click `Stepwise-desktop.app` in Finder, choose `Open`, then confirm `Open` in the system prompt. After the first successful launch, macOS will remember that choice for that copy of the app.
+- If the app still remains quarantined after download, you can remove the quarantine flag manually:
+
+```bash
+xattr -dr com.apple.quarantine "/Applications/stepwise-desktop.app"
+```
+
+- For local builds, replace the path above with your packaged `.app` path under `packages/desktop/out/`.
+- You only need to do this while the app is unsigned and not notarized.
+
 **Windows notes:**
 - Run `bun run package:desktop` on Windows to generate the Windows desktop build artifacts.
 - Electron Forge will place the packaged Windows output in `packages/desktop/out/`.

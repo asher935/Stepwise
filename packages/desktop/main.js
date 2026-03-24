@@ -22,6 +22,41 @@ function getBundlePath(...segments) {
     const basePath = (0, node_path_1.join)(electron_1.app.getAppPath(), '.bundle');
     return (0, node_path_1.join)(basePath, ...segments);
 }
+function getFileFilters(filename) {
+    const extension = (0, node_path_1.extname)(filename).toLowerCase();
+    switch (extension) {
+        case '.pdf':
+            return [{ name: 'PDF Document', extensions: ['pdf'] }];
+        case '.docx':
+            return [{ name: 'Word Document', extensions: ['docx'] }];
+        case '.zip':
+            return [{ name: 'ZIP Archive', extensions: ['zip'] }];
+        case '.stepwise':
+            return [{ name: 'Stepwise Export', extensions: ['stepwise'] }];
+        default:
+            return [{ name: 'All Files', extensions: ['*'] }];
+    }
+}
+async function saveFileFromRenderer(options) {
+    const targetWindow = electron_1.BrowserWindow.getFocusedWindow() ?? mainWindow;
+    const defaultDirectory = electron_1.app.getPath('downloads');
+    const defaultPath = (0, node_path_1.join)(defaultDirectory, (0, node_path_1.basename)(options.filename));
+    const dialogOptions = {
+        defaultPath,
+        filters: getFileFilters(options.filename),
+    };
+    const dialogResult = targetWindow
+        ? await electron_1.dialog.showSaveDialog(targetWindow, dialogOptions)
+        : await electron_1.dialog.showSaveDialog(dialogOptions);
+    if (dialogResult.canceled || !dialogResult.filePath) {
+        return { canceled: true };
+    }
+    await (0, promises_1.writeFile)(dialogResult.filePath, Buffer.from(options.data));
+    return {
+        canceled: false,
+        path: dialogResult.filePath,
+    };
+}
 function createLoadingWindow() {
     if (loadingWindow && !loadingWindow.isDestroyed()) {
         return;
@@ -370,6 +405,9 @@ async function createMainWindow() {
 }
 electron_1.app.on('before-quit', () => {
     isQuitting = true;
+});
+electron_1.ipcMain.handle('desktop:save-file', (_event, options) => {
+    return saveFileFromRenderer(options);
 });
 electron_1.app.whenReady().then(async () => {
     await createMainWindow();

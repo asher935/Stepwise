@@ -1,10 +1,12 @@
-import { mkdir } from 'node:fs/promises';
-import { join } from 'node:path';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { basename, extname, join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain } from 'electron';
+
+import type { DesktopSaveFileOptions, DesktopSaveFileResult } from '@stepwise/shared';
 
 const DESKTOP_BACKEND_PORT = Number(process.env['STEPWISE_DESKTOP_PORT'] ?? '43123');
 
@@ -26,6 +28,47 @@ function getBundlePath(...segments: string[]): string {
   const basePath = join(app.getAppPath(), '.bundle');
 
   return join(basePath, ...segments);
+}
+
+function getFileFilters(filename: string): Electron.FileFilter[] {
+  const extension = extname(filename).toLowerCase();
+
+  switch (extension) {
+    case '.pdf':
+      return [{ name: 'PDF Document', extensions: ['pdf'] }];
+    case '.docx':
+      return [{ name: 'Word Document', extensions: ['docx'] }];
+    case '.zip':
+      return [{ name: 'ZIP Archive', extensions: ['zip'] }];
+    case '.stepwise':
+      return [{ name: 'Stepwise Export', extensions: ['stepwise'] }];
+    default:
+      return [{ name: 'All Files', extensions: ['*'] }];
+  }
+}
+
+async function saveFileFromRenderer(options: DesktopSaveFileOptions): Promise<DesktopSaveFileResult> {
+  const targetWindow = BrowserWindow.getFocusedWindow() ?? mainWindow;
+  const defaultDirectory = app.getPath('downloads');
+  const defaultPath = join(defaultDirectory, basename(options.filename));
+  const dialogOptions = {
+    defaultPath,
+    filters: getFileFilters(options.filename),
+  };
+  const dialogResult = targetWindow
+    ? await dialog.showSaveDialog(targetWindow, dialogOptions)
+    : await dialog.showSaveDialog(dialogOptions);
+
+  if (dialogResult.canceled || !dialogResult.filePath) {
+    return { canceled: true };
+  }
+
+  await writeFile(dialogResult.filePath, Buffer.from(options.data));
+
+  return {
+    canceled: false,
+    path: dialogResult.filePath,
+  };
 }
 
 function createLoadingWindow(): void {
@@ -422,6 +465,10 @@ async function createMainWindow(): Promise<void> {
 
 app.on('before-quit', () => {
   isQuitting = true;
+});
+
+ipcMain.handle('desktop:save-file', (_event, options: DesktopSaveFileOptions) => {
+  return saveFileFromRenderer(options);
 });
 
 app.whenReady().then(async () => {

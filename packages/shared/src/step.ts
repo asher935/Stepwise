@@ -36,9 +36,19 @@ export interface BaseStep {
   caption: string;
   isEdited: boolean;
   screenshotClip?: { x: number; y: number; width: number; height: number };
+  /** Redaction rectangles for zoomed screenshots (clip-local coordinates when clipped) */
   redactionRects?: Array<{ x: number; y: number; width: number; height: number }>;
+  /** Redaction rectangles for viewport screenshots (viewport-relative coordinates) */
+  viewportRedactionRects?: Array<{ x: number; y: number; width: number; height: number }>;
+  /** Redaction rectangles for fullPage screenshots (page-absolute coordinates) */
+  pageRedactionRects?: Array<{ x: number; y: number; width: number; height: number }>;
   redactScreenshot?: boolean;
+  /** Redacted screenshot path for zoomed mode */
   redactedScreenshotPath?: string;
+  /** Redacted screenshot path for viewport mode */
+  redactedFullScreenshotPath?: string;
+  /** Redacted screenshot path for fullPage mode */
+  redactedPageScreenshotPath?: string;
   /** Stores the original screenshot URL before redaction is applied */
   originalScreenshotDataUrl?: string;
   highlightColor?: string;

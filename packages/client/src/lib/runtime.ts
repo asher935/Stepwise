@@ -1,8 +1,9 @@
-import type { RuntimeConfig } from '@stepwise/shared';
+import type { DesktopBridge, RuntimeConfig } from '@stepwise/shared';
 
 declare global {
   interface Window {
     __STEPWISE_RUNTIME_CONFIG__?: RuntimeConfig;
+    __STEPWISE_DESKTOP_API__?: DesktopBridge;
   }
 }
 
@@ -46,4 +47,12 @@ export function getRuntimeConfig(): Required<RuntimeConfig> {
     wsBaseUrl: trimTrailingSlash(config.wsBaseUrl ?? getDefaultWsBaseUrl()),
     isDesktop: config.isDesktop ?? false,
   };
+}
+
+export function getDesktopBridge(): DesktopBridge | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  return window.__STEPWISE_DESKTOP_API__ ?? null;
 }

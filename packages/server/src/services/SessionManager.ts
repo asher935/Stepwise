@@ -328,43 +328,115 @@ export class SessionManager {
       throw new Error('STEP_NOT_FOUND');
     }
 
-    const redactionRects = this.getRedactionRects(step);
-
     if (enable) {
-      if (redactionRects.length === 0) {
+      // Generate redacted screenshots for all available modes
+      const redactionPromises: Promise<void>[] = [];
+      const generationPromises = new Map<string, Promise<string>>();
+
+      const queueRedaction = (
+        sourcePath: string | undefined,
+        rects: Array<{ x: number; y: number; width: number; height: number }>,
+        assign: (redactedPath: string) => void
+      ): void => {
+        if (!sourcePath || rects.length === 0) {
+          return;
+        }
+
+        const redactedPath = sourcePath.replace(/\.(png|jpg)$/, '.redacted.$1');
+        const key = `${sourcePath}:${JSON.stringify(rects)}`;
+
+        let generationPromise = generationPromises.get(key);
+        if (!generationPromise) {
+          generationPromise = redactionService.generateRedactedScreenshot(
+            sourcePath,
+            rects,
+            redactedPath
+          ).then(() => redactedPath);
+          generationPromises.set(key, generationPromise);
+        }
+
+        redactionPromises.push(
+          generationPromise.then((resolvedPath) => {
+            assign(resolvedPath);
+          })
+        );
+      };
+
+      // Zoomed mode redaction
+      const zoomedRedactionRects = this.getRedactionRectsForMode(step, 'zoomed');
+      queueRedaction(step.screenshotPath, zoomedRedactionRects, (redactedPath) => {
+        step.redactedScreenshotPath = redactedPath;
+      });
+
+      // Viewport mode redaction
+      const viewportRedactionRects = this.getRedactionRectsForMode(step, 'viewport');
+      queueRedaction(step.fullScreenshotPath, viewportRedactionRects, (redactedPath) => {
+        step.redactedFullScreenshotPath = redactedPath;
+      });
+
+      // FullPage mode redaction
+      const pageRedactionRects = this.getRedactionRectsForMode(step, 'fullPage');
+      queueRedaction(step.pageScreenshotPath, pageRedactionRects, (redactedPath) => {
+        step.redactedPageScreenshotPath = redactedPath;
+      });
+
+      if (redactionPromises.length === 0) {
         throw new Error('CANNOT_DETERMINE_REDACTION_AREA');
       }
 
-      const redactedPath = step.screenshotPath.replace(/\.(png|jpg)$/, '.redacted.$1');
-      await redactionService.generateRedactedScreenshot(
-        step.screenshotPath,
-        redactionRects,
-        redactedPath
-      );
-
+      await Promise.all(redactionPromises);
       step.redactScreenshot = true;
-      step.redactedScreenshotPath = redactedPath;
 
-      const mimeType = env.SCREENSHOT_FORMAT === 'png' ? 'image/png' : 'image/jpeg';
-      const redactedBuffer = await import('node:fs/promises').then(fs => fs.readFile(redactedPath));
-      const screenshotDataUrl = `data:${mimeType};base64,${redactedBuffer.toString('base64')}`;
+      // Return the redacted screenshot for the currently selected mode
+      const mode = step.selectedScreenshotMode || 'zoomed';
+      let redactedPath: string | undefined;
+      if (mode === 'fullPage') {
+        redactedPath = step.redactedPageScreenshotPath;
+      } else if (mode === 'viewport') {
+        redactedPath = step.redactedFullScreenshotPath;
+      } else {
+        redactedPath = step.redactedScreenshotPath;
+      }
 
-      return { redactedScreenshotPath: redactedPath, screenshotDataUrl };
+      if (redactedPath) {
+        const mimeType = env.SCREENSHOT_FORMAT === 'png' ? 'image/png' : 'image/jpeg';
+        const redactedBuffer = await import('node:fs/promises').then(fs => fs.readFile(redactedPath));
+        const screenshotDataUrl = `data:${mimeType};base64,${redactedBuffer.toString('base64')}`;
+        return { redactedScreenshotPath: redactedPath, screenshotDataUrl };
+      }
+
+      return { redactedScreenshotPath: null, screenshotDataUrl: null };
     } else {
       step.redactScreenshot = false;
       step.redactedScreenshotPath = undefined;
+      step.redactedFullScreenshotPath = undefined;
+      step.redactedPageScreenshotPath = undefined;
 
       return { redactedScreenshotPath: null, screenshotDataUrl: null };
     }
   }
 
-  private getRedactionRects(step: Step): Array<{ x: number; y: number; width: number; height: number }> {
-    if (step.redactionRects && step.redactionRects.length > 0) {
-      return step.redactionRects;
+  private getRedactionRectsForMode(step: Step, mode: 'zoomed' | 'viewport' | 'fullPage'): Array<{ x: number; y: number; width: number; height: number }> {
+    // Use the new getRedactionRects method which handles mode-specific rectangles
+    const rects = redactionService.getRedactionRects({
+      redactionRects: step.redactionRects,
+      viewportRedactionRects: step.viewportRedactionRects,
+      pageRedactionRects: step.pageRedactionRects,
+      selectedScreenshotMode: mode,
+    });
+
+    if (rects.length > 0) {
+      return rects;
     }
 
+    // Fallback for legacy steps without redactionRects/pageRedactionRects
     if (step.action === 'type') {
-      const redactionRect = redactionService.getRedactionRect(step as TypeStep);
+      const typeStep = step as TypeStep;
+      const redactionRect = redactionService.getRedactionRect({
+        target: typeStep.target,
+        screenshotClip: typeStep.screenshotClip,
+        selectedScreenshotMode: mode,
+      });
       return redactionRect ? [redactionRect] : [];
     }
 
@@ -373,6 +445,44 @@ export class SessionManager {
       const redactionRect = redactionService.getRedactionRect({
         target: pasteStep.target,
         screenshotClip: pasteStep.screenshotClip,
+        selectedScreenshotMode: mode,
+      });
+      return redactionRect ? [redactionRect] : [];
+    }
+
+    return [];
+  }
+
+  private getRedactionRects(step: Step): Array<{ x: number; y: number; width: number; height: number }> {
+    // Use the new getRedactionRects method which handles mode-specific rectangles
+    const rects = redactionService.getRedactionRects({
+      redactionRects: step.redactionRects,
+      viewportRedactionRects: step.viewportRedactionRects,
+      pageRedactionRects: step.pageRedactionRects,
+      selectedScreenshotMode: step.selectedScreenshotMode,
+    });
+
+    if (rects.length > 0) {
+      return rects;
+    }
+
+    // Fallback for legacy steps without redactionRects/pageRedactionRects
+    if (step.action === 'type') {
+      const typeStep = step as TypeStep;
+      const redactionRect = redactionService.getRedactionRect({
+        target: typeStep.target,
+        screenshotClip: typeStep.screenshotClip,
+        selectedScreenshotMode: typeStep.selectedScreenshotMode,
+      });
+      return redactionRect ? [redactionRect] : [];
+    }
+
+    if (step.action === 'paste') {
+      const pasteStep = step as PasteStep;
+      const redactionRect = redactionService.getRedactionRect({
+        target: pasteStep.target,
+        screenshotClip: pasteStep.screenshotClip,
+        selectedScreenshotMode: pasteStep.selectedScreenshotMode,
       });
       return redactionRect ? [redactionRect] : [];
     }

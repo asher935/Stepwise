@@ -36,14 +36,26 @@ export class ExportService {
 
   private getScreenshotPath(step: Step): string {
     const mode = this.getSelectedScreenshotMode(step);
+    
+    // If redaction is enabled, use the mode-specific redacted screenshot path
+    if (step.redactScreenshot) {
+      if (mode === 'fullPage' && step.redactedPageScreenshotPath) {
+        return step.redactedPageScreenshotPath;
+      }
+      if (mode === 'viewport' && step.redactedFullScreenshotPath) {
+        return step.redactedFullScreenshotPath;
+      }
+      if (step.redactedScreenshotPath) {
+        return step.redactedScreenshotPath;
+      }
+    }
+    
+    // Otherwise, use the appropriate screenshot based on mode
     if (mode === 'fullPage') {
       return step.pageScreenshotPath || step.fullScreenshotPath || step.screenshotPath;
     }
     if (mode === 'viewport') {
       return step.fullScreenshotPath || step.screenshotPath;
-    }
-    if (step.redactScreenshot) {
-      return step.redactedScreenshotPath || step.screenshotPath;
     }
     return step.screenshotPath;
   }

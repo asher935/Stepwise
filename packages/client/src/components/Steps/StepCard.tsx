@@ -22,7 +22,11 @@ export function StepCard({ step }: StepCardProps) {
   const isCollapsed = useSessionStore((s) => s.collapsedStepIds.has(step.id));
   const isHovered = hoveredStepId === step.id;
   const isLatest = step.index === steps.length - 1;
-  const canToggleRedaction = Boolean(step.redactionRects?.length) || step.action === 'type' || step.action === 'paste';
+  const canToggleRedaction = Boolean(
+    step.redactionRects?.length
+    || step.viewportRedactionRects?.length
+    || step.pageRedactionRects?.length
+  ) || step.action === 'type' || step.action === 'paste';
   // Expand if hovered, or if it's the latest card and nothing else is hovered
   const shouldExpand = isHovered || (isLatest && !hoveredStepId && !isCollapsed);
 

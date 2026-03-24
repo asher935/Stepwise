@@ -40,6 +40,36 @@ async function copyDirectory(source, target) {
   await cp(source, target, { recursive: true, force: true, dereference: true });
 }
 
+function getPackageDir(rootDir, packageName) {
+  return join(rootDir, ...packageName.split('/'));
+}
+
+async function copyPackageDependencyTree(rootDir, targetRootDir, packageName, visited = new Set()) {
+  if (visited.has(packageName)) {
+    return;
+  }
+
+  const packageDir = getPackageDir(rootDir, packageName);
+  if (!(await exists(packageDir))) {
+    return;
+  }
+
+  visited.add(packageName);
+
+  const targetDir = getPackageDir(targetRootDir, packageName);
+  await copyDirectory(packageDir, targetDir);
+
+  const packageJson = JSON.parse(await readFile(join(packageDir, 'package.json'), 'utf8'));
+  const dependencies = {
+    ...packageJson.dependencies,
+    ...packageJson.optionalDependencies,
+  };
+
+  for (const dependencyName of Object.keys(dependencies)) {
+    await copyPackageDependencyTree(rootDir, targetRootDir, dependencyName, visited);
+  }
+}
+
 async function exists(path) {
   try {
     await stat(path);
@@ -60,8 +90,8 @@ await generateIconFromSvg();
 const serverDist = join(repoRoot, 'packages', 'server', 'dist', 'index.js');
 const clientDist = join(repoRoot, 'packages', 'client', 'dist');
 const sharedNodeModulesDir = join(repoRoot, 'node_modules', '.bun', 'node_modules');
-const playwrightCoreDir = join(sharedNodeModulesDir, 'playwright-core');
 const sharpImageDir = join(sharedNodeModulesDir, '@img');
+const bundledDependencies = ['playwright-core', 'archiver', 'docx', 'sharp'];
 
 await copyFile(process.execPath, join(bundleDir, 'bin', bunBinaryName));
 if (process.platform !== 'win32') {
@@ -70,7 +100,16 @@ if (process.platform !== 'win32') {
 
 await copyFile(serverDist, join(bundleDir, 'server', 'index.js'));
 await copyDirectory(clientDist, join(bundleDir, 'client', 'dist'));
-await copyDirectory(playwrightCoreDir, join(bundleDir, 'node_modules', 'playwright-core'));
+
+const copiedDependencies = new Set();
+for (const dependencyName of bundledDependencies) {
+  await copyPackageDependencyTree(
+    sharedNodeModulesDir,
+    join(bundleDir, 'node_modules'),
+    dependencyName,
+    copiedDependencies
+  );
+}
 
 if (await exists(sharpImageDir)) {
   await copyDirectory(sharpImageDir, join(bundleDir, 'node_modules', '@img'));

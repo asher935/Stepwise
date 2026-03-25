@@ -3,6 +3,7 @@ import { Download, FileText, FileCode, Shield, Sparkles, CheckCircle2, X, Eye, E
 import type { ExportFormat } from '@stepwise/shared';
 
 import { api } from '@/lib/api';
+import { getDesktopBridge, getRuntimeConfig } from '@/lib/runtime';
 import { useSessionStore } from '@/stores/sessionStore';
 
 interface ExportModalProps {
@@ -60,14 +61,29 @@ export function ExportModal({ open, onOpenChange, guideTitle, setGuideTitle }: E
       });
 
       const blob = await api.downloadExport(sessionId, result.filename);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = result.filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      const runtimeConfig = getRuntimeConfig();
+      const desktopBridge = getDesktopBridge();
+
+      if (runtimeConfig.isDesktop && desktopBridge) {
+        const data = new Uint8Array(await blob.arrayBuffer());
+        const saveResult = await desktopBridge.saveFile({
+          filename: result.filename,
+          data,
+        });
+
+        if (saveResult.canceled) {
+          return;
+        }
+      } else {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = result.filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
 
       onOpenChange(false);
     } catch (error) {

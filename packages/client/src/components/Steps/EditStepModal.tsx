@@ -217,11 +217,24 @@ export function EditStepModal({ open, onOpenChange, screenshotDataUrl, fullScree
   }, [caption, isEditing]);
 
   const handleDownload = useCallback(async () => {
-    const currentScreenshotUrl = screenshotMode === 'zoomed'
-      ? (redactedScreenshotUrl || originalScreenshotUrl)
-      : screenshotMode === 'viewport'
-        ? (fullScreenshotDataUrl || originalScreenshotUrl)
-        : (pageScreenshotDataUrl || fullScreenshotDataUrl || originalScreenshotUrl);
+    // Determine which screenshot to download
+    let currentScreenshotUrl: string | undefined;
+    
+    // If redaction is enabled, always use the redacted screenshot
+    if (redactEnabled && redactedScreenshotUrl) {
+      currentScreenshotUrl = redactedScreenshotUrl;
+    } else {
+      // Otherwise, use the appropriate screenshot based on mode
+      if (screenshotMode === 'zoomed') {
+        currentScreenshotUrl = originalScreenshotUrl;
+      } else if (screenshotMode === 'viewport') {
+        currentScreenshotUrl = fullScreenshotDataUrl || originalScreenshotUrl;
+      } else {
+        // fullPage mode
+        currentScreenshotUrl = pageScreenshotDataUrl || fullScreenshotDataUrl || originalScreenshotUrl;
+      }
+    }
+    
     if (!currentScreenshotUrl) return;
 
     let urlToDownload = currentScreenshotUrl;
@@ -244,6 +257,7 @@ export function EditStepModal({ open, onOpenChange, screenshotDataUrl, fullScree
     document.body.removeChild(a);
   }, [
     screenshotMode,
+    redactEnabled,
     redactedScreenshotUrl,
     originalScreenshotUrl,
     fullScreenshotDataUrl,
@@ -296,13 +310,25 @@ export function EditStepModal({ open, onOpenChange, screenshotDataUrl, fullScree
     }
   }, [onToggleRedaction, redactEnabled]);
 
-  const handleScreenshotModeChange = useCallback((mode: ScreenshotMode) => {
+  const handleScreenshotModeChange = useCallback(async (mode: ScreenshotMode) => {
     setScreenshotMode(mode);
     if (!onSaveScreenshotMode) {
       return;
     }
-    void onSaveScreenshotMode(mode);
-  }, [onSaveScreenshotMode]);
+    await onSaveScreenshotMode(mode);
+    
+    // If redaction is enabled, re-apply it to get the redacted screenshot for the new mode
+    if (redactEnabled && onToggleRedaction) {
+      try {
+        const newRedactedUrl = await onToggleRedaction(true);
+        if (newRedactedUrl) {
+          setRedactedScreenshotUrl(newRedactedUrl);
+        }
+      } catch (error) {
+        console.error('Failed to get redacted screenshot for new mode:', error);
+      }
+    }
+  }, [onSaveScreenshotMode, redactEnabled, onToggleRedaction]);
 
   const handleRemoveLegendItem = useCallback(async (bubbleNumber: number) => {
     if (!onSaveLegendItems) {
@@ -359,11 +385,23 @@ export function EditStepModal({ open, onOpenChange, screenshotDataUrl, fullScree
     }
   }, [onSaveLegendItems, isEditing]);
 
-  const screenshotToDisplay = screenshotMode === 'zoomed'
-    ? (redactedScreenshotUrl || originalScreenshotUrl)
-    : screenshotMode === 'viewport'
-      ? (fullScreenshotDataUrl || originalScreenshotUrl)
-      : (pageScreenshotDataUrl || fullScreenshotDataUrl || originalScreenshotUrl);
+  const screenshotToDisplay = (() => {
+    // If redaction is enabled, use the redacted screenshot for the current mode
+    // Note: The redactedScreenshotUrl from toggleRedaction is for the currently selected mode
+    if (redactEnabled && redactedScreenshotUrl) {
+      return redactedScreenshotUrl;
+    }
+    
+    // Otherwise, use the appropriate screenshot based on mode
+    if (screenshotMode === 'zoomed') {
+      return originalScreenshotUrl;
+    }
+    if (screenshotMode === 'viewport') {
+      return fullScreenshotDataUrl || originalScreenshotUrl;
+    }
+    // fullPage mode
+    return pageScreenshotDataUrl || fullScreenshotDataUrl || originalScreenshotUrl;
+  })();
 
   if (!open) return null;
 

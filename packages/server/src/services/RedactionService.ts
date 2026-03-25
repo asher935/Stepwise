@@ -121,41 +121,107 @@ export class RedactionService {
   }
 
   /**
+   * Gets redaction rectangles from step based on screenshot mode
+   * Returns the appropriate redactionRects or pageRedactionRects
+   */
+  getRedactionRects(step: {
+    redactionRects?: RedactionRect[];
+    viewportRedactionRects?: RedactionRect[];
+    pageRedactionRects?: RedactionRect[];
+    selectedScreenshotMode?: 'zoomed' | 'viewport' | 'fullPage';
+  }): RedactionRect[] {
+    const mode = step.selectedScreenshotMode || 'zoomed';
+
+    // For fullPage mode, use pageRedactionRects (page-absolute coordinates)
+    if (mode === 'fullPage' && step.pageRedactionRects) {
+      return step.pageRedactionRects;
+    }
+
+    if (mode === 'viewport') {
+      return step.viewportRedactionRects || step.redactionRects || [];
+    }
+
+    return step.redactionRects || step.viewportRedactionRects || [];
+  }
+
+  /**
    * Calculates redaction rectangle from TypeStep, accounting for screenshot clips
+   * and screenshot modes (zoomed, viewport, fullPage)
+   * @deprecated Use getRedactionRects instead for steps with redactionRects/pageRedactionRects
    */
   getRedactionRect(step: {
     target: { boundingBox: RedactionRect };
     screenshotClip?: RedactionRect;
+    selectedScreenshotMode?: 'zoomed' | 'viewport' | 'fullPage';
   }): RedactionRect | null {
     const box = step.target.boundingBox;
     const clip = step.screenshotClip;
+    const mode = step.selectedScreenshotMode || 'zoomed';
 
-    if (!clip) {
+    // For zoomed mode with clip
+    if (mode === 'zoomed' && clip) {
+      // Convert box coordinates to screenshot-local space
+      const x = box.x - clip.x;
+      const y = box.y - clip.y;
+
+      // Calculate intersection with clip bounds (in screenshot-local space)
+      // The clip itself is [0, 0, clip.width, clip.height] in screenshot-local space
+      const left = Math.max(0, x);
+      const top = Math.max(0, y);
+      const right = Math.min(clip.width, x + box.width);
+      const bottom = Math.min(clip.height, y + box.height);
+
+      // If no intersection, return null
+      if (left >= right || top >= bottom) {
+        return null;
+      }
+
+      return {
+        x: left,
+        y: top,
+        width: right - left,
+        height: bottom - top,
+      };
+    }
+
+    // For viewport mode: bounding box is in page coordinates, but screenshot
+    // shows only the viewport. We need the coordinates relative to viewport.
+    // Since we don't have scroll position stored, we return the box as-is
+    // and rely on clamping in the redact() method to handle out-of-bounds.
+    if (mode === 'viewport') {
       return box;
     }
 
-    // Convert box coordinates to screenshot-local space
-    const x = box.x - clip.x;
-    const y = box.y - clip.y;
-
-    // Calculate intersection with clip bounds (in screenshot-local space)
-    // The clip itself is [0, 0, clip.width, clip.height] in screenshot-local space
-    const left = Math.max(0, x);
-    const top = Math.max(0, y);
-    const right = Math.min(clip.width, x + box.width);
-    const bottom = Math.min(clip.height, y + box.height);
-
-    // If no intersection, return null
-    if (left >= right || top >= bottom) {
-      return null;
+    // For fullPage mode: bounding box is in page coordinates and screenshot
+    // shows the full page, so coordinates should match directly
+    if (mode === 'fullPage') {
+      return box;
     }
 
-    return {
-      x: left,
-      y: top,
-      width: right - left,
-      height: bottom - top,
-    };
+    // Fallback for legacy steps without selectedScreenshotMode
+    // If clip exists, assume zoomed mode behavior
+    if (clip) {
+      const x = box.x - clip.x;
+      const y = box.y - clip.y;
+      const left = Math.max(0, x);
+      const top = Math.max(0, y);
+      const right = Math.min(clip.width, x + box.width);
+      const bottom = Math.min(clip.height, y + box.height);
+
+      if (left >= right || top >= bottom) {
+        return null;
+      }
+
+      return {
+        x: left,
+        y: top,
+        width: right - left,
+        height: bottom - top,
+      };
+    }
+
+    // No clip, return box as-is (will be clamped to image bounds)
+    return box;
   }
 
   /**

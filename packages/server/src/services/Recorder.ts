@@ -66,6 +66,7 @@ export class Recorder {
     fullScreenshotDataUrl: string;
     elementInfo: ElementInfo | null;
     redactionRects: Rect[];
+    viewportRedactionRects: Rect[];
     clip?: { x: number; y: number; width: number; height: number } | null;
   } | null = null;
   private isFinalizing: boolean = false;
@@ -136,64 +137,81 @@ export class Recorder {
     delay: number = 100,
     clip?: { x: number; y: number; width: number; height: number },
     highlightBoundingBox?: { x: number; y: number; width: number; height: number }
-  ): Promise<{ screenshotData: Buffer; redactionRects: Rect[] }> {
+  ): Promise<{ screenshotData: Buffer; redactionRects: Rect[]; viewportRedactionRects: Rect[] }> {
     if (delay > 0) {
       await new Promise(resolve => setTimeout(resolve, delay));
     }
 
-    const redactionRects = await this.detectInputRedactionRects(clip);
+    // Detect in viewport space first, then derive clip-local rects for zoomed screenshots.
+    const viewportRedactionRects = await this.detectInputRedactionRects(undefined, false);
+    const redactionRects = clip
+      ? viewportRedactionRects
+        .map((rect) => this.clipRectToScreenshotSpace(rect, clip))
+        .filter((rect): rect is Rect => rect !== null)
+      : viewportRedactionRects;
 
     if (highlightBoundingBox) {
       try {
         const screenshotData = await this.cdpBridge.takeScreenshotWithHighlight(highlightBoundingBox, clip, false);
-        return { screenshotData, redactionRects };
+        return { screenshotData, redactionRects, viewportRedactionRects };
       } catch {
         const screenshotData = await this.cdpBridge.takeScreenshot(clip, false);
-        return { screenshotData, redactionRects };
+        return { screenshotData, redactionRects, viewportRedactionRects };
       }
     }
 
     const screenshotData = await this.cdpBridge.takeScreenshot(clip, false);
-    return { screenshotData, redactionRects };
+    return { screenshotData, redactionRects, viewportRedactionRects };
   }
 
   private async captureFullPageScreenshot(
     delay: number = 0,
     highlightBoundingBox?: { x: number; y: number; width: number; height: number },
     safeOnly: boolean = false
-  ): Promise<Buffer | null> {
+  ): Promise<{ screenshotData: Buffer; redactionRects: Rect[] } | null> {
     if (delay > 0) {
       await new Promise(resolve => setTimeout(resolve, delay));
     }
 
+    // For fullPage screenshots, use page-absolute coordinates (fullPage = true)
+    const redactionRects = await this.detectInputRedactionRects(undefined, true);
+
     if (safeOnly) {
       try {
+        let screenshotData: Buffer | null;
         if (highlightBoundingBox) {
-          return await this.cdpBridge.takeSafeFullPageScreenshotWithHighlight(highlightBoundingBox);
+          screenshotData = await this.cdpBridge.takeSafeFullPageScreenshotWithHighlight(highlightBoundingBox);
+        } else {
+          screenshotData = await this.cdpBridge.takeSafeFullPageScreenshot();
         }
-
-        return await this.cdpBridge.takeSafeFullPageScreenshot();
+        if (!screenshotData) return null;
+        return { screenshotData, redactionRects };
       } catch {
         return null;
       }
     }
 
     try {
+      let screenshotData: Buffer;
       if (highlightBoundingBox) {
-        return await this.cdpBridge.takeScreenshotWithHighlight(highlightBoundingBox, undefined, true);
+        screenshotData = await this.cdpBridge.takeScreenshotWithHighlight(highlightBoundingBox, undefined, true);
+      } else {
+        screenshotData = await this.cdpBridge.takeScreenshot(undefined, true);
       }
-
-      return await this.cdpBridge.takeScreenshot(undefined, true);
+      return { screenshotData, redactionRects };
     } catch {
       if (highlightBoundingBox) {
         try {
-          return await this.cdpBridge.takeScreenshotWithHighlight(highlightBoundingBox, undefined, true);
+          const screenshotData = await this.cdpBridge.takeScreenshotWithHighlight(highlightBoundingBox, undefined, true);
+          return { screenshotData, redactionRects };
         } catch {
-          return this.cdpBridge.takeScreenshot(undefined, true);
+          const screenshotData = await this.cdpBridge.takeScreenshot(undefined, true);
+          return { screenshotData, redactionRects };
         }
       }
 
-      return this.cdpBridge.takeScreenshot(undefined, true);
+      const screenshotData = await this.cdpBridge.takeScreenshot(undefined, true);
+      return { screenshotData, redactionRects };
     }
   }
 
@@ -240,9 +258,9 @@ export class Recorder {
     const capture = await this.captureScreenshot(0);
     const screenshotPath = await this.saveScreenshot(capture.screenshotData);
     const screenshotDataUrl = this.toScreenshotDataUrl(capture.screenshotData);
-    const pageScreenshotData = await this.captureFullPageScreenshot(0);
-    const pageScreenshotPath = pageScreenshotData ? await this.saveScreenshot(pageScreenshotData) : undefined;
-    const pageScreenshotDataUrl = pageScreenshotData ? this.toScreenshotDataUrl(pageScreenshotData) : undefined;
+    const pageCapture = await this.captureFullPageScreenshot(0);
+    const pageScreenshotPath = pageCapture ? await this.saveScreenshot(pageCapture.screenshotData) : undefined;
+    const pageScreenshotDataUrl = pageCapture ? this.toScreenshotDataUrl(pageCapture.screenshotData) : undefined;
     const targetLegendItem = legendItems.find((item) => item.semanticKey === 'username')
       ?? legendItems.find((item) => item.semanticKey === 'password')
       ?? legendItems[0]
@@ -278,6 +296,8 @@ export class Recorder {
       target,
       button: 'left',
       redactionRects: capture.redactionRects,
+      viewportRedactionRects: capture.viewportRedactionRects,
+      pageRedactionRects: pageCapture?.redactionRects,
       legendItems,
       pageLegendItems,
       caption: this.buildLegendCaption(legendItems),
@@ -567,12 +587,12 @@ export class Recorder {
     }
   }
 
-  private async detectInputRedactionRects(clip?: Rect): Promise<Rect[]> {
+  private async detectInputRedactionRects(clip?: Rect, fullPage: boolean = false): Promise<Rect[]> {
     const page = this.session.page;
     if (!page) return [];
 
     try {
-      const pageRects = await page.evaluate(() => {
+      const pageRects = await page.evaluate((isFullPage) => {
         const candidates = new Set<Element>();
         for (const element of document.querySelectorAll('input, textarea, select, [contenteditable], [role="textbox"], [role="searchbox"], [role="combobox"]')) {
           candidates.add(element);
@@ -605,9 +625,15 @@ export class Recorder {
             continue;
           }
 
+          // getBoundingClientRect returns viewport-relative coordinates
+          // For fullPage screenshots, convert to page coordinates by adding scroll position
+          // For viewport/zoomed screenshots, keep viewport-relative coordinates
+          const x = isFullPage ? rect.x + window.scrollX : rect.x;
+          const y = isFullPage ? rect.y + window.scrollY : rect.y;
+
           const rounded = {
-            x: Math.max(0, Math.round(rect.x)),
-            y: Math.max(0, Math.round(rect.y)),
+            x: Math.max(0, Math.round(x)),
+            y: Math.max(0, Math.round(y)),
             width: Math.round(rect.width),
             height: Math.round(rect.height),
           };
@@ -620,7 +646,7 @@ export class Recorder {
         }
 
         return rects;
-      });
+      }, fullPage);
 
       return pageRects
         .map((rect) => this.clipRectToScreenshotSpace(rect, clip))
@@ -750,7 +776,7 @@ export class Recorder {
         ? elementInfo.boundingBox
         : undefined;
 
-      const { screenshotData, redactionRects } = await this.captureScreenshot(
+      const { screenshotData, redactionRects, viewportRedactionRects } = await this.captureScreenshot(
         0,
         clip ?? undefined,
         highlightBoundingBox
@@ -774,6 +800,7 @@ export class Recorder {
         fullScreenshotDataUrl: viewportScreenshotDataUrl,
         elementInfo,
         redactionRects,
+        viewportRedactionRects,
         clip
       };
     } catch (error) {
@@ -802,6 +829,7 @@ export class Recorder {
     let fullScreenshotDataUrl: string;
     let elementInfo: ElementInfo | null;
     let redactionRects: Rect[];
+    let viewportRedactionRects: Rect[];
     let clip: { x: number; y: number; width: number; height: number } | null;
 
     if (this.pendingClickScreenshot &&
@@ -816,6 +844,7 @@ export class Recorder {
       fullScreenshotDataUrl = pending.fullScreenshotDataUrl;
       elementInfo = pending.elementInfo;
       redactionRects = pending.redactionRects;
+      viewportRedactionRects = pending.viewportRedactionRects;
       clip = pending.clip ?? null;
 
       // Clear the pending screenshot
@@ -840,6 +869,7 @@ export class Recorder {
       );
       const screenshotData = capture.screenshotData;
       redactionRects = capture.redactionRects;
+      viewportRedactionRects = capture.viewportRedactionRects;
       screenshotPath = await this.saveScreenshot(screenshotData);
       screenshotDataUrl = this.toScreenshotDataUrl(screenshotData);
       const viewportScreenshotData = clip
@@ -874,6 +904,7 @@ export class Recorder {
       target,
       button,
       redactionRects,
+      viewportRedactionRects,
       caption,
     };
 
@@ -1000,6 +1031,7 @@ export class Recorder {
       step.fullScreenshotPath = fullScreenshotPath;
       step.fullScreenshotDataUrl = fullScreenshotDataUrl;
       step.redactionRects = capture.redactionRects;
+      step.viewportRedactionRects = capture.viewportRedactionRects;
 
       // Move accumulated text to rawValue
       const { accumulatedText, ...stepWithoutAccumulated } = step;
@@ -1057,6 +1089,7 @@ export class Recorder {
       fromUrl,
       toUrl,
       redactionRects,
+      viewportRedactionRects: redactionRects,
       caption: `Navigate to ${this.formatUrl(toUrl)}`,
     };
 
@@ -1133,6 +1166,7 @@ export class Recorder {
       direction,
       distance,
       redactionRects,
+      viewportRedactionRects: redactionRects,
       caption: `Scroll ${direction}`,
     };
 
@@ -1222,6 +1256,7 @@ export class Recorder {
       caption: `Paste in "${fieldName}"`,
       rawValue: text,
       screenshotDataUrl: this.toScreenshotDataUrl(finalScreenshotData),
+      viewportRedactionRects: capture.viewportRedactionRects,
     };
 
     this.session.steps.push(step);

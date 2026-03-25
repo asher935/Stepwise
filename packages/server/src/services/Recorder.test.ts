@@ -87,6 +87,7 @@ describe('Recorder screenshot variants', () => {
     const viewportBuffer = Buffer.from('viewport');
     const clip = { x: 10, y: 20, width: 300, height: 200 };
     const paths: string[] = [];
+    const viewportRedactionRect = { x: 120, y: 140, width: 80, height: 24 };
 
     const cdpBridge: CDPBridgeMock = {
       getElementAtPoint: async () => ({
@@ -109,6 +110,17 @@ describe('Recorder screenshot variants', () => {
 
     const { recorder, session } = createRecorder(cdpBridge);
     Object.assign(recorder as unknown as RecorderTestHarness, {
+      detectInputRedactionRects: async (currentClip?: ScreenshotClip) => {
+        if (currentClip) {
+          return [{
+            x: viewportRedactionRect.x - currentClip.x,
+            y: viewportRedactionRect.y - currentClip.y,
+            width: viewportRedactionRect.width,
+            height: viewportRedactionRect.height,
+          }];
+        }
+        return [viewportRedactionRect];
+      },
       getClipForTarget: async () => clip,
       saveScreenshot: async (screenshotData: Buffer) => {
         const path = `/tmp/${paths.length + 1}-${screenshotData.toString('utf8')}.png`;
@@ -128,6 +140,13 @@ describe('Recorder screenshot variants', () => {
     expect(step?.screenshotPath).toBe('/tmp/1-zoomed.png');
     expect(step?.fullScreenshotPath).toBe('/tmp/2-viewport.png');
     expect(step?.pageScreenshotPath).toBeUndefined();
+    expect(step?.redactionRects).toEqual([{
+      x: 110,
+      y: 120,
+      width: 80,
+      height: 24,
+    }]);
+    expect(step?.viewportRedactionRects).toEqual([viewportRedactionRect]);
   });
 
   it('keeps viewport capture only for navigation steps', async () => {

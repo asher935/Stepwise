@@ -8,4 +8,10 @@ const runtimeConfig = {
     isDesktop: true,
 };
 electron_1.contextBridge.exposeInMainWorld('__STEPWISE_RUNTIME_CONFIG__', runtimeConfig);
+const desktopBridge = {
+    saveFile(options) {
+        return electron_1.ipcRenderer.invoke('desktop:save-file', options);
+    },
+};
+electron_1.contextBridge.exposeInMainWorld('__STEPWISE_DESKTOP_API__', desktopBridge);
 //# sourceMappingURL=preload.js.map

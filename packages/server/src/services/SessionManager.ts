@@ -1,11 +1,12 @@
 import { chromium } from 'playwright-core';
 import { mkdir, rm } from 'fs/promises';
 import { join } from 'path';
-import type { SessionState, SessionMode, Step, TypeStep, PasteStep } from '@stepwise/shared';
+import type { CreateSessionResponse, SessionMode, SessionState, Step, ToggleRedactionResult } from '@stepwise/shared';
 import type { ServerSession, CreateSessionOptions } from '../types/session.js';
 import { env } from '../lib/env.js';
 import { generateToken, generateSessionId } from '../lib/crypto.js';
 import { redactionService } from './RedactionService.js';
+import { toScreenshotDataUrl } from '../lib/screenshots.js';
 
 type SessionEventType =
   | 'session:created'
@@ -16,11 +17,28 @@ type SessionEventType =
   | 'session:activity'
   | 'session:updated';
 
-type SessionEventHandler = (sessionId: string, data?: unknown) => void;
+type SessionEndReason = 'user' | 'timeout' | 'error';
+
+type SessionEventPayloadMap = {
+  'session:created': undefined;
+  'session:started': undefined;
+  'session:ended': { reason: SessionEndReason };
+  'session:expiring': { remainingMs: number };
+  'session:error': Error | unknown;
+  'session:activity': undefined;
+  'session:updated': SessionState | null;
+};
+
+type SessionEventHandler<TEvent extends SessionEventType> = (
+  sessionId: string,
+  data: SessionEventPayloadMap[TEvent]
+) => void;
 
 export class SessionManager {
   private sessions: Map<string, ServerSession> = new Map();
-  private eventHandlers: Map<SessionEventType, Set<SessionEventHandler>> = new Map();
+  private eventHandlers: {
+    [TEvent in SessionEventType]?: Set<SessionEventHandler<TEvent>>;
+  } = {};
   private cleanupInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor() {
@@ -64,25 +82,32 @@ export class SessionManager {
   /**
    * Registers an event handler
    */
-  on(event: SessionEventType, handler: SessionEventHandler): void {
-    if (!this.eventHandlers.has(event)) {
-      this.eventHandlers.set(event, new Set());
+  on<TEvent extends SessionEventType>(event: TEvent, handler: SessionEventHandler<TEvent>): void {
+    let handlers = this.eventHandlers[event] as Set<SessionEventHandler<TEvent>> | undefined;
+    if (handlers === undefined) {
+      handlers = new Set<SessionEventHandler<TEvent>>();
+      this.eventHandlers[event] = handlers as (typeof this.eventHandlers)[TEvent];
     }
-    this.eventHandlers.get(event)!.add(handler);
+    handlers.add(handler);
   }
 
   /**
    * Removes an event handler
    */
-  off(event: SessionEventType, handler: SessionEventHandler): void {
-    this.eventHandlers.get(event)?.delete(handler);
+  off<TEvent extends SessionEventType>(event: TEvent, handler: SessionEventHandler<TEvent>): void {
+    const handlers = this.eventHandlers[event] as Set<SessionEventHandler<TEvent>> | undefined;
+    handlers?.delete(handler);
   }
 
   /**
    * Emits an event to all handlers
    */
-  private emit(event: SessionEventType, sessionId: string, data?: unknown): void {
-    const handlers = this.eventHandlers.get(event);
+  private emit<TEvent extends SessionEventType>(
+    event: TEvent,
+    sessionId: string,
+    data: SessionEventPayloadMap[TEvent]
+  ): void {
+    const handlers = this.eventHandlers[event] as Set<SessionEventHandler<TEvent>> | undefined;
     if (handlers) {
       for (const handler of handlers) {
         try {
@@ -97,7 +122,7 @@ export class SessionManager {
   /**
    * Creates a new session
    */
-  async createSession(_options: CreateSessionOptions = {}): Promise<{ sessionId: string; token: string }> {
+  async createSession(_options: CreateSessionOptions = {}): Promise<CreateSessionResponse> {
     // Check session limit
     if (this.sessions.size >= env.MAX_SESSIONS) {
       throw new Error('SESSION_LIMIT_REACHED');
@@ -133,7 +158,7 @@ export class SessionManager {
     };
 
     this.sessions.set(sessionId, session);
-    this.emit('session:created', sessionId);
+    this.emit('session:created', sessionId, undefined);
 
     return { sessionId, token };
   }
@@ -194,7 +219,7 @@ export class SessionManager {
       session.status = 'active';
       session.lastActivityAt = Date.now();
 
-      this.emit('session:started', sessionId);
+      this.emit('session:started', sessionId, undefined);
     } catch (error) {
       session.status = 'failed';
       session.error = error instanceof Error ? error.message : 'Unknown error';
@@ -217,8 +242,8 @@ export class SessionManager {
       if (session.browser) {
         try {
           await session.browser.close();
-        } catch {
-          // Silent failure - continue cleanup
+        } catch (error) {
+          console.error(`[SessionManager] Failed to close browser for ${sessionId}:`, error);
         }
       }
 
@@ -257,7 +282,7 @@ export class SessionManager {
     if (session) {
       session.lastActivityAt = Date.now();
       session.lastExpiryWarningAt = null;
-      this.emit('session:activity', sessionId);
+      this.emit('session:activity', sessionId, undefined);
     }
   }
 
@@ -317,7 +342,7 @@ export class SessionManager {
   /**
    * Toggles redaction for a step
    */
-  async toggleRedaction(sessionId: string, stepId: string, enable: boolean): Promise<{ redactedScreenshotPath: string | null; screenshotDataUrl: string | null }> {
+  async toggleRedaction(sessionId: string, stepId: string, enable: boolean): Promise<ToggleRedactionResult> {
     const session = this.sessions.get(sessionId);
     if (!session) {
       throw new Error('SESSION_NOT_FOUND');
@@ -399,9 +424,8 @@ export class SessionManager {
       }
 
       if (redactedPath) {
-        const mimeType = env.SCREENSHOT_FORMAT === 'png' ? 'image/png' : 'image/jpeg';
         const redactedBuffer = await import('node:fs/promises').then(fs => fs.readFile(redactedPath));
-        const screenshotDataUrl = `data:${mimeType};base64,${redactedBuffer.toString('base64')}`;
+        const screenshotDataUrl = toScreenshotDataUrl(redactedBuffer, env.SCREENSHOT_FORMAT);
         return { redactedScreenshotPath: redactedPath, screenshotDataUrl };
       }
 
@@ -417,77 +441,21 @@ export class SessionManager {
   }
 
   private getRedactionRectsForMode(step: Step, mode: 'zoomed' | 'viewport' | 'fullPage'): Array<{ x: number; y: number; width: number; height: number }> {
-    // Use the new getRedactionRects method which handles mode-specific rectangles
-    const rects = redactionService.getRedactionRects({
+    return redactionService.getRedactionRects({
       redactionRects: step.redactionRects,
       viewportRedactionRects: step.viewportRedactionRects,
       pageRedactionRects: step.pageRedactionRects,
       selectedScreenshotMode: mode,
     });
-
-    if (rects.length > 0) {
-      return rects;
-    }
-
-    // Fallback for legacy steps without redactionRects/pageRedactionRects
-    if (step.action === 'type') {
-      const typeStep = step as TypeStep;
-      const redactionRect = redactionService.getRedactionRect({
-        target: typeStep.target,
-        screenshotClip: typeStep.screenshotClip,
-        selectedScreenshotMode: mode,
-      });
-      return redactionRect ? [redactionRect] : [];
-    }
-
-    if (step.action === 'paste') {
-      const pasteStep = step as PasteStep;
-      const redactionRect = redactionService.getRedactionRect({
-        target: pasteStep.target,
-        screenshotClip: pasteStep.screenshotClip,
-        selectedScreenshotMode: mode,
-      });
-      return redactionRect ? [redactionRect] : [];
-    }
-
-    return [];
   }
 
   private getRedactionRects(step: Step): Array<{ x: number; y: number; width: number; height: number }> {
-    // Use the new getRedactionRects method which handles mode-specific rectangles
-    const rects = redactionService.getRedactionRects({
+    return redactionService.getRedactionRects({
       redactionRects: step.redactionRects,
       viewportRedactionRects: step.viewportRedactionRects,
       pageRedactionRects: step.pageRedactionRects,
       selectedScreenshotMode: step.selectedScreenshotMode,
     });
-
-    if (rects.length > 0) {
-      return rects;
-    }
-
-    // Fallback for legacy steps without redactionRects/pageRedactionRects
-    if (step.action === 'type') {
-      const typeStep = step as TypeStep;
-      const redactionRect = redactionService.getRedactionRect({
-        target: typeStep.target,
-        screenshotClip: typeStep.screenshotClip,
-        selectedScreenshotMode: typeStep.selectedScreenshotMode,
-      });
-      return redactionRect ? [redactionRect] : [];
-    }
-
-    if (step.action === 'paste') {
-      const pasteStep = step as PasteStep;
-      const redactionRect = redactionService.getRedactionRect({
-        target: pasteStep.target,
-        screenshotClip: pasteStep.screenshotClip,
-        selectedScreenshotMode: pasteStep.selectedScreenshotMode,
-      });
-      return redactionRect ? [redactionRect] : [];
-    }
-
-    return [];
   }
 
   /**

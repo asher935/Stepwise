@@ -2,9 +2,17 @@ import { describe, expect, it } from 'bun:test';
 import type { TypeStep } from '@stepwise/shared';
 import { Recorder } from './Recorder.js';
 import { env } from '../lib/env.js';
+import { toScreenshotDataUrl } from '../lib/screenshots.js';
 import type { ServerSession } from '../types/session.js';
 
 type ScreenshotClip = { x: number; y: number; width: number; height: number };
+type InteractiveElement = {
+  kind: 'field' | 'button';
+  label: string;
+  inViewport: boolean;
+  semanticKey?: 'username' | 'password';
+  boundingBox: ScreenshotClip;
+};
 type ElementInfo = {
   tagName: string;
   boundingBox: ScreenshotClip;
@@ -34,8 +42,14 @@ type RecorderTestHarness = {
     boundingBox: ScreenshotClip | null,
     point?: { x: number; y: number }
   ) => Promise<ScreenshotClip | null>;
+  detectInteractiveElementsOnPage: () => Promise<InteractiveElement[]>;
+  getFocusedElementInfo: () => Promise<ElementInfo | null>;
   saveScreenshot: (screenshotData: Buffer) => Promise<string>;
 };
+
+function withRecorderHarness(recorder: Recorder): Recorder & RecorderTestHarness {
+  return recorder as Recorder & RecorderTestHarness;
+}
 
 function createSession(): ServerSession {
   return {
@@ -61,8 +75,7 @@ function createSession(): ServerSession {
 }
 
 function toDataUrl(buffer: Buffer): string {
-  const mimeType = env.SCREENSHOT_FORMAT === 'png' ? 'image/png' : 'image/jpeg';
-  return `data:${mimeType};base64,${buffer.toString('base64')}`;
+  return toScreenshotDataUrl(buffer, env.SCREENSHOT_FORMAT);
 }
 
 function createRecorder(cdpBridge: CDPBridgeMock, session: ServerSession = createSession()): {
@@ -74,7 +87,7 @@ function createRecorder(cdpBridge: CDPBridgeMock, session: ServerSession = creat
     cdpBridge: cdpBridge as never,
   });
 
-  Object.assign(recorder as unknown as RecorderTestHarness, {
+  Object.assign(withRecorderHarness(recorder), {
     detectInputRedactionRects: async () => [],
   });
 
@@ -109,7 +122,7 @@ describe('Recorder screenshot variants', () => {
     };
 
     const { recorder, session } = createRecorder(cdpBridge);
-    Object.assign(recorder as unknown as RecorderTestHarness, {
+    Object.assign(withRecorderHarness(recorder), {
       detectInputRedactionRects: async (currentClip?: ScreenshotClip) => {
         if (currentClip) {
           return [{
@@ -163,7 +176,7 @@ describe('Recorder screenshot variants', () => {
 
     const { recorder, session } = createRecorder(cdpBridge);
     const savedBuffers: Buffer[] = [];
-    Object.assign(recorder as unknown as RecorderTestHarness, {
+    Object.assign(withRecorderHarness(recorder), {
       saveScreenshot: async (screenshotData: Buffer) => {
         savedBuffers.push(screenshotData);
         return `/tmp/${savedBuffers.length}.png`;
@@ -195,9 +208,7 @@ describe('Recorder screenshot variants', () => {
 
     const { recorder } = createRecorder(cdpBridge);
     const savedBuffers: Buffer[] = [];
-    Object.assign(recorder as unknown as RecorderTestHarness & {
-      detectInteractiveElementsOnPage: () => Promise<unknown[]>;
-    }, {
+    Object.assign(withRecorderHarness(recorder), {
       detectInteractiveElementsOnPage: async () => [],
       saveScreenshot: async (screenshotData: Buffer) => {
         savedBuffers.push(screenshotData);
@@ -239,9 +250,7 @@ describe('Recorder typing flush behavior', () => {
     };
 
     const { recorder, session } = createRecorder(cdpBridge);
-    Object.assign(recorder as unknown as RecorderTestHarness & {
-      getFocusedElementInfo: () => Promise<ElementInfo | null>;
-    }, {
+    Object.assign(withRecorderHarness(recorder), {
       getFocusedElementInfo: async () => ({
         tagName: 'input',
         labelText: 'Username',
@@ -298,9 +307,7 @@ describe('Recorder typing flush behavior', () => {
     };
 
     const { recorder, session } = createRecorder(cdpBridge);
-    Object.assign(recorder as unknown as RecorderTestHarness & {
-      getFocusedElementInfo: () => Promise<ElementInfo | null>;
-    }, {
+    Object.assign(withRecorderHarness(recorder), {
       getFocusedElementInfo: async () => focusedElements.shift() ?? null,
       getClipForTarget: async () => null,
       saveScreenshot: async () => '/tmp/type-shot.png',

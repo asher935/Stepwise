@@ -4,19 +4,30 @@ import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import type { 
   Step, 
+  ImportPreviewResult,
   ImportOptions, 
   ImportResult, 
   StepwiseManifest,
-  ImportValidationError 
+  ImportValidationError,
+  PasteStep,
+  TypeStep,
 } from '@stepwise/shared';
 import type { ServerSession } from '../types/session.js';
 import { decrypt } from '../lib/crypto.js';
 import { env } from '../lib/env.js';
+import { toScreenshotDataUrl } from '../lib/screenshots.js';
 
 interface ParsedStepwiseFile {
   manifest: StepwiseManifest;
   steps: Step[];
   screenshots: Map<string, Buffer>;
+}
+
+interface RedactionRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 /**
@@ -73,10 +84,11 @@ export class ImportService {
         await writeFile(newPath, new Uint8Array(screenshotBuffer));
       }
 
-      updatedSteps.push({
-        ...step,
-        screenshotPath: newPath,
-      });
+      const screenshotDataUrl = screenshotBuffer
+        ? toScreenshotDataUrl(screenshotBuffer, this.getScreenshotFormat(filename))
+        : undefined;
+
+      updatedSteps.push(this.normalizeImportedStep(step, newPath, screenshotDataUrl));
     }
 
     this.session.steps = updatedSteps;
@@ -86,6 +98,91 @@ export class ImportService {
       steps: updatedSteps,
       createdAt: parsed.manifest.createdAt,
     };
+  }
+
+  private normalizeImportedStep(
+    step: Step,
+    screenshotPath: string,
+    screenshotDataUrl?: string
+  ): Step {
+    const selectedScreenshotMode = step.selectedScreenshotMode ?? 'zoomed';
+    const legacyRects = this.getLegacyRedactionRects(step);
+
+    return {
+      ...step,
+      screenshotPath,
+      fullScreenshotPath: screenshotPath,
+      pageScreenshotPath: screenshotPath,
+      screenshotDataUrl,
+      fullScreenshotDataUrl: screenshotDataUrl,
+      pageScreenshotDataUrl: screenshotDataUrl,
+      originalScreenshotDataUrl: undefined,
+      redactedScreenshotPath: undefined,
+      redactedFullScreenshotPath: undefined,
+      redactedPageScreenshotPath: undefined,
+      selectedScreenshotMode,
+      redactionRects: step.redactionRects ?? legacyRects.redactionRects,
+      viewportRedactionRects: step.viewportRedactionRects
+        ?? step.redactionRects
+        ?? legacyRects.viewportRedactionRects,
+      pageRedactionRects: step.pageRedactionRects ?? legacyRects.pageRedactionRects,
+      redactScreenshot: step.redactScreenshot ?? false,
+    };
+  }
+
+  private getLegacyRedactionRects(step: Step): {
+    redactionRects: RedactionRect[];
+    viewportRedactionRects: RedactionRect[];
+    pageRedactionRects: RedactionRect[] | undefined;
+  } {
+    if (step.action !== 'type' && step.action !== 'paste') {
+      return {
+        redactionRects: [],
+        viewportRedactionRects: [],
+        pageRedactionRects: undefined,
+      };
+    }
+
+    const inputStep = step as TypeStep | PasteStep;
+    const pageRect = inputStep.target.boundingBox;
+    const zoomedRect = this.clipRectToScreenshotSpace(pageRect, inputStep.screenshotClip);
+
+    return {
+      redactionRects: zoomedRect ? [zoomedRect] : [],
+      viewportRedactionRects: [pageRect],
+      pageRedactionRects: [pageRect],
+    };
+  }
+
+  private clipRectToScreenshotSpace(
+    rect: RedactionRect,
+    clip?: RedactionRect
+  ): RedactionRect | null {
+    if (!clip) {
+      return rect.width > 0 && rect.height > 0 ? rect : null;
+    }
+
+    const localX = rect.x - clip.x;
+    const localY = rect.y - clip.y;
+    const left = Math.max(0, localX);
+    const top = Math.max(0, localY);
+    const right = Math.min(clip.width, localX + rect.width);
+    const bottom = Math.min(clip.height, localY + rect.height);
+
+    if (left >= right || top >= bottom) {
+      return null;
+    }
+
+    return {
+      x: left,
+      y: top,
+      width: right - left,
+      height: bottom - top,
+    };
+  }
+
+  private getScreenshotFormat(filename: string): 'png' | 'jpeg' {
+    return filename.toLowerCase().endsWith('.png') ? 'png' : 'jpeg';
   }
 
   /**
@@ -210,11 +307,7 @@ export class ImportService {
   /**
    * Previews a .stepwise file without fully importing
    */
-  async preview(fileBuffer: Buffer, options: ImportOptions = {}): Promise<{
-    manifest: StepwiseManifest;
-    stepCount: number;
-    encrypted: boolean;
-  }> {
+  async preview(fileBuffer: Buffer, options: ImportOptions = {}): Promise<ImportPreviewResult> {
     const isEncrypted = ImportService.isEncrypted(fileBuffer);
     
     let dataBuffer = fileBuffer;

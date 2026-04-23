@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 import { writeFile } from 'node:fs/promises';
+import { EMPTY_LEGEND_CAPTION } from '@stepwise/shared';
 import type { ClickStep } from '@stepwise/shared';
 import { sessionManager } from './SessionManager.js';
 import { redactionService } from './RedactionService.js';
@@ -16,7 +17,7 @@ function createInsertLikeClickStep(id: string, screenshotPath: string): ClickSte
     fullScreenshotPath: screenshotPath,
     screenshotDataUrl: 'data:image/png;base64,b3JpZ2luYWw=',
     fullScreenshotDataUrl: 'data:image/png;base64,b3JpZ2luYWw=',
-    caption: 'Review the current view',
+    caption: EMPTY_LEGEND_CAPTION,
     isEdited: false,
     button: 'left',
     target: {

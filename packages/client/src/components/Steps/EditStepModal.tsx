@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { X, Download, Check, Edit3, Image as ImageIcon, Eye, EyeOff } from 'lucide-react';
 import { createPortal } from 'react-dom';
+import { buildLegendCaption } from '@stepwise/shared';
 import type { ScreenshotMode, StepLegendItem } from '@stepwise/shared';
 import { StepLegendOverlay } from './StepLegendOverlay';
 import { useSessionStore } from '@/stores/sessionStore';
@@ -23,14 +24,6 @@ interface EditStepModalProps {
   onToggleRedaction?: (redact: boolean) => Promise<string | undefined>;
   canToggleRedaction?: boolean;
   isRedacted?: boolean;
-}
-
-function buildLegendCaption(items: StepLegendItem[]): string {
-  if (items.length === 0) {
-    return 'Review the current view';
-  }
-  const lines = items.map((item) => `(${item.bubbleNumber}) ${item.label.toLowerCase()}`);
-  return ['On this page:', ...lines].join('\n');
 }
 
 function hexToRgba(hex: string, alpha: number): string {

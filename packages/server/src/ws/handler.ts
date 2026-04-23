@@ -33,12 +33,9 @@ type ConnectionState = {
 const connections = new Map<ServerWebSocket<WSConnection>, ConnectionState>();
 
 function getConnectionIdentity(ws: ServerWebSocket<WSConnection>): { sessionId: string; token: string } | null {
-  const data = ws.data as WSConnection & {
-    query?: { sessionId?: string; token?: string };
-  };
-
-  const sessionId = data?.sessionId ?? data?.query?.sessionId;
-  const token = data?.token ?? data?.query?.token;
+  const data = ws.data as Partial<WSConnection>;
+  const sessionId = data.sessionId;
+  const token = data.token;
 
   if (!sessionId || !token) {
     return null;
@@ -184,12 +181,7 @@ function isClientMessage(value: unknown): value is ClientMessage {
 }
 
 function unwrapClientMessage(value: unknown): ClientMessage | null {
-  if (isClientMessage(value)) return value;
-  if (!isRecord(value)) return null;
-  if (value['type'] !== 'BROWSER_ACTION') return null;
-  const payload = value['payload'];
-  if (!isClientMessage(payload)) return null;
-  return payload;
+  return isClientMessage(value) ? value : null;
 }
 
 /**
@@ -1097,19 +1089,6 @@ export async function handleClose(ws: ServerWebSocket<WSConnection>): Promise<vo
 
   const identity = getConnectionIdentity(ws);
   console.warn(`[WS] Client disconnected from session ${identity?.sessionId ?? 'unknown'}`);
-}
-
-/**
- * Gets all active connections for a session
- */
-export function getSessionConnections(sessionId: string): number {
-  let count = 0;
-  for (const [ws, _] of connections) {
-    if (ws.data.sessionId === sessionId) {
-      count++;
-    }
-  }
-  return count;
 }
 
 /**

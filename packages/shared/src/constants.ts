@@ -15,15 +15,6 @@ export const DEFAULTS = {
   TYPING_DEBOUNCE_MS: 500,
 } as const;
 
-/** API endpoints */
-export const API = {
-  SESSIONS: '/api/sessions',
-  STEPS: '/api/steps',
-  EXPORT: '/api/export',
-  IMPORT: '/api/import',
-  HEALTH: '/api/health',
-} as const;
-
 /** WebSocket close codes */
 export const WS_CLOSE_CODES = {
   NORMAL: 1000,

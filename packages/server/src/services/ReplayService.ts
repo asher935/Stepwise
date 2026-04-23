@@ -7,6 +7,7 @@ import { nanoid } from 'nanoid';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { env } from '../lib/env.js';
+import { getScreenshotFileExtension } from '../lib/screenshots.js';
 
 interface ReplayServiceOptions {
   speed: number;
@@ -235,7 +236,7 @@ export class ReplayService {
     const screenshotData = await this.cdp.takeScreenshot();
 
     // Save screenshot
-    const extension = env.SCREENSHOT_FORMAT === 'png' ? 'png' : 'jpg';
+    const extension = getScreenshotFileExtension(env.SCREENSHOT_FORMAT);
     const filename = `${nanoid()}.${extension}`;
     const sessionDir = join(env.TEMP_DIR, 'sessions', this.session.id, 'screenshots');
     const filepath = join(sessionDir, filename);

@@ -16,6 +16,7 @@
     "package:desktop": "bun run build:desktop && bun run --filter @stepwise/desktop make",
     "smoke:desktop": "bun run build:desktop && bun run --filter @stepwise/desktop package",
     "typecheck": "bun run --filter @stepwise/shared typecheck && bun run --filter @stepwise/server typecheck && bun run --filter @stepwise/client typecheck && bun run --filter @stepwise/desktop typecheck",
+    "check:cycles": "bun run scripts/check-cycles.mjs",
     "lint": "bun run --filter @stepwise/server lint && bun run --filter @stepwise/client lint && bun run --filter @stepwise/desktop lint",
     "clean": "rm -rf packages/*/dist packages/*/.turbo"
   },

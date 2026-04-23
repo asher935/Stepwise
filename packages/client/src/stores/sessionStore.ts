@@ -1,4 +1,4 @@
-import type { SessionState, Step, ElementInfo, ScreenshotMode, StepLegendItem } from '@stepwise/shared';
+import type { ElementInfo, SessionState, Step, UpdateStepRequest } from '@stepwise/shared';
 import { create } from 'zustand';
 import { api } from '../lib/api';
 import { wsClient } from '../lib/ws';
@@ -6,6 +6,12 @@ import { useReplayStore } from './replayStore';
 
 const DEFAULT_STEP_HIGHLIGHT_COLOR = '#FF0000';
 const STEP_HIGHLIGHT_COLOR_STORAGE_KEY = 'stepwise.stepHighlightColor';
+
+function removeStepAndReindex(steps: Step[], stepId: string): Step[] {
+  return steps
+    .filter((step) => step.id !== stepId)
+    .map((step, index) => ({ ...step, index }));
+}
 
 function isHexColor(value: string): boolean {
   return /^#[0-9a-fA-F]{6}$/.test(value);
@@ -46,14 +52,7 @@ interface SessionStore {
   startSession: (startUrl?: string) => Promise<void>;
   endSession: () => Promise<void>;
   setRecordingPaused: (paused: boolean) => Promise<void>;
-  updateStep: (stepId: string, updates: {
-    caption?: string;
-    redactScreenshot?: boolean;
-    redactedScreenshotPath?: string;
-    legendItems?: StepLegendItem[];
-    pageLegendItems?: StepLegendItem[];
-    selectedScreenshotMode?: ScreenshotMode;
-  }) => Promise<void>;
+  updateStep: (stepId: string, updates: UpdateStepRequest) => Promise<void>;
   toggleRedaction: (stepId: string, redact: boolean) => Promise<string | undefined>;
   deleteStep: (stepId: string) => Promise<void>;
   insertStep: (index: number, step: Omit<Step, 'index'>) => Promise<void>;
@@ -156,14 +155,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     }
   },
 
-  updateStep: async (stepId: string, updates: {
-    caption?: string;
-    redactScreenshot?: boolean;
-    redactedScreenshotPath?: string;
-    legendItems?: StepLegendItem[];
-    pageLegendItems?: StepLegendItem[];
-    selectedScreenshotMode?: ScreenshotMode;
-  }) => {
+  updateStep: async (stepId: string, updates: UpdateStepRequest) => {
     const { sessionId, steps, localStepIds } = get();
     if (!sessionId) return;
 
@@ -234,9 +226,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       const newLocalStepIds = new Set(localStepIds);
       newLocalStepIds.delete(stepId);
       set((state) => ({
-        steps: state.steps
-          .filter(s => s.id !== stepId)
-          .map((s, i) => ({ ...s, index: i })),
+        steps: removeStepAndReindex(state.steps, stepId),
         localStepIds: newLocalStepIds
       }));
       return;
@@ -245,9 +235,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     try {
       await api.deleteStep(sessionId, stepId);
       set((state) => ({
-        steps: state.steps
-          .filter(s => s.id !== stepId)
-          .map((s, i) => ({ ...s, index: i }))
+        steps: removeStepAndReindex(state.steps, stepId)
       }));
     } catch (error) {
       set({
@@ -437,9 +425,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
             const newLocalStepIds = new Set(state.localStepIds);
             newLocalStepIds.delete(message.stepId);
             return {
-              steps: state.steps
-                .filter(s => s.id !== message.stepId)
-                .map((s, i) => ({ ...s, index: i })),
+              steps: removeStepAndReindex(state.steps, message.stepId),
               localStepIds: newLocalStepIds
             };
           });

@@ -165,7 +165,6 @@ export function Viewport() {
     return (
       <div className="flex-1 flex flex-col p-8 overflow-hidden">
         <div className="flex flex-col flex-1 bg-white rounded-[48px] shadow-[0_40px_80px_rgba(45,36,30,0.1)] border border-white overflow-hidden relative">
-          {/* Connecting State */}
           <div className="flex-1 flex items-center justify-center bg-[#FFF9F5]">
             <div className="text-center text-[#6B5E55]">
               <div className="animate-pulse mb-4 font-bold uppercase tracking-widest">Connecting to browser...</div>
@@ -194,7 +193,6 @@ export function Viewport() {
   return (
     <div className="flex-1 flex flex-col p-8 overflow-hidden">
       <div className="flex flex-col flex-1 bg-white rounded-[48px] shadow-[0_40px_80px_rgba(45,36,30,0.1)] border border-white overflow-hidden relative">
-        {/* Viewport Surface */}
         <section
           ref={containerRef}
           className="flex-1 bg-[#FFF9F5] relative overflow-hidden cursor-crosshair group"

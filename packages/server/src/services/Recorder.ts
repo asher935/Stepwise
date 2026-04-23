@@ -1,12 +1,14 @@
 import { nanoid } from 'nanoid';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { buildLegendCaption } from '@stepwise/shared';
 import type { Step, ClickStep, TypeStep, NavigateStep, ScrollStep, PasteStep, StepHighlight, StepLegendItem } from '@stepwise/shared';
 import type { ServerSession } from '../types/session.js';
 import { CDPBridge } from './CDPBridge.js';
 import { redactionService } from './RedactionService.js';
 import { createHighlight, inferFieldName, truncateText } from '../lib/selectors.js';
 import { env } from '../lib/env.js';
+import { getScreenshotFileExtension, toScreenshotDataUrl } from '../lib/screenshots.js';
 
 type StepEventType = 'step:created' | 'step:updated' | 'step:deleted';
 type StepEventHandler = (step: Step) => void;
@@ -120,7 +122,7 @@ export class Recorder {
    * Saves a screenshot to disk
    */
   private async saveScreenshot(screenshotData: Buffer): Promise<string> {
-    const extension = env.SCREENSHOT_FORMAT === 'png' ? 'png' : 'jpg';
+    const extension = getScreenshotFileExtension(env.SCREENSHOT_FORMAT);
     const filename = `${nanoid()}.${extension}`;
     const sessionDir = join(env.TEMP_DIR, 'sessions', this.session.id, 'screenshots');
     const filepath = join(sessionDir, filename);
@@ -238,6 +240,7 @@ export class Recorder {
       fullScreenshotDataUrl,
       pageScreenshotPath,
       pageScreenshotDataUrl,
+      selectedScreenshotMode: 'zoomed',
       caption: '',
       isEdited: false,
       redactScreenshot: false,
@@ -246,21 +249,18 @@ export class Recorder {
     };
   }
 
-  private toScreenshotDataUrl(buffer: Buffer): string {
-    const mimeType = env.SCREENSHOT_FORMAT === 'png' ? 'image/png' : 'image/jpeg';
-    return `data:${mimeType};base64,${buffer.toString('base64')}`;
-  }
-
   async createInsertStepFromCurrentView(): Promise<ClickStep | null> {
     const elements = await this.detectInteractiveElementsOnPage();
     const legendItems = this.buildLegendItems(elements.filter((element) => element.inViewport));
     const pageLegendItems = this.buildLegendItems(elements);
     const capture = await this.captureScreenshot(0);
     const screenshotPath = await this.saveScreenshot(capture.screenshotData);
-    const screenshotDataUrl = this.toScreenshotDataUrl(capture.screenshotData);
+    const screenshotDataUrl = toScreenshotDataUrl(capture.screenshotData, env.SCREENSHOT_FORMAT);
     const pageCapture = await this.captureFullPageScreenshot(0);
     const pageScreenshotPath = pageCapture ? await this.saveScreenshot(pageCapture.screenshotData) : undefined;
-    const pageScreenshotDataUrl = pageCapture ? this.toScreenshotDataUrl(pageCapture.screenshotData) : undefined;
+    const pageScreenshotDataUrl = pageCapture
+      ? toScreenshotDataUrl(pageCapture.screenshotData, env.SCREENSHOT_FORMAT)
+      : undefined;
     const targetLegendItem = legendItems.find((item) => item.semanticKey === 'username')
       ?? legendItems.find((item) => item.semanticKey === 'password')
       ?? legendItems[0]
@@ -300,7 +300,7 @@ export class Recorder {
       pageRedactionRects: pageCapture?.redactionRects,
       legendItems,
       pageLegendItems,
-      caption: this.buildLegendCaption(legendItems),
+      caption: buildLegendCaption(legendItems),
     };
   }
 
@@ -379,14 +379,6 @@ export class Recorder {
     }
 
     return prioritized.map((element, index) => this.toLegendItem(element, index + 1));
-  }
-
-  private buildLegendCaption(legendItems: StepLegendItem[]): string {
-    if (legendItems.length === 0) {
-      return 'Review the current view';
-    }
-    const lines = legendItems.map((item) => `(${item.bubbleNumber}) ${item.label.toLowerCase()}`);
-    return ['On this page:', ...lines].join('\n');
   }
 
   private async detectInteractiveElementsOnPage(): Promise<DetectedInteractiveElement[]> {
@@ -782,12 +774,14 @@ export class Recorder {
         highlightBoundingBox
       );
       const screenshotPath = await this.saveScreenshot(screenshotData);
-      const screenshotDataUrl = this.toScreenshotDataUrl(screenshotData);
+      const screenshotDataUrl = toScreenshotDataUrl(screenshotData, env.SCREENSHOT_FORMAT);
       const viewportScreenshotData = clip
         ? (await this.captureScreenshot(0, undefined, highlightBoundingBox)).screenshotData
         : screenshotData;
       const viewportScreenshotPath = clip ? await this.saveScreenshot(viewportScreenshotData) : screenshotPath;
-      const viewportScreenshotDataUrl = clip ? this.toScreenshotDataUrl(viewportScreenshotData) : screenshotDataUrl;
+      const viewportScreenshotDataUrl = clip
+        ? toScreenshotDataUrl(viewportScreenshotData, env.SCREENSHOT_FORMAT)
+        : screenshotDataUrl;
 
       this.pendingClickScreenshot = {
         x,
@@ -871,12 +865,14 @@ export class Recorder {
       redactionRects = capture.redactionRects;
       viewportRedactionRects = capture.viewportRedactionRects;
       screenshotPath = await this.saveScreenshot(screenshotData);
-      screenshotDataUrl = this.toScreenshotDataUrl(screenshotData);
+      screenshotDataUrl = toScreenshotDataUrl(screenshotData, env.SCREENSHOT_FORMAT);
       const viewportScreenshotData = clip
         ? (await this.captureScreenshot(0, undefined, highlightBoundingBox)).screenshotData
         : screenshotData;
       fullScreenshotPath = clip ? await this.saveScreenshot(viewportScreenshotData) : screenshotPath;
-      fullScreenshotDataUrl = clip ? this.toScreenshotDataUrl(viewportScreenshotData) : screenshotDataUrl;
+      fullScreenshotDataUrl = clip
+        ? toScreenshotDataUrl(viewportScreenshotData, env.SCREENSHOT_FORMAT)
+        : screenshotDataUrl;
     }
 
     // Create highlight
@@ -1022,8 +1018,8 @@ export class Recorder {
         finalScreenshotData = await redactionService.redact(screenshotData, capture.redactionRects);
       }
 
-      const screenshotDataUrl = this.toScreenshotDataUrl(finalScreenshotData);
-      const fullScreenshotDataUrl = this.toScreenshotDataUrl(fullScreenshotData);
+      const screenshotDataUrl = toScreenshotDataUrl(finalScreenshotData, env.SCREENSHOT_FORMAT);
+      const fullScreenshotDataUrl = toScreenshotDataUrl(fullScreenshotData, env.SCREENSHOT_FORMAT);
 
       // Update step with screenshot
       step.screenshotPath = screenshotPath;
@@ -1075,7 +1071,7 @@ export class Recorder {
     await this.cdpBridge.waitForPageLoad();
     const { screenshotData, redactionRects } = await this.captureScreenshot();
     const screenshotPath = await this.saveScreenshot(screenshotData);
-    const screenshotDataUrl = this.toScreenshotDataUrl(screenshotData);
+    const screenshotDataUrl = toScreenshotDataUrl(screenshotData, env.SCREENSHOT_FORMAT);
 
     const step: NavigateStep = {
       ...this.createBaseStep(
@@ -1152,7 +1148,7 @@ export class Recorder {
 
     const { screenshotData, redactionRects } = await this.captureScreenshot(100);
     const screenshotPath = await this.saveScreenshot(screenshotData);
-    const screenshotDataUrl = this.toScreenshotDataUrl(screenshotData);
+    const screenshotDataUrl = toScreenshotDataUrl(screenshotData, env.SCREENSHOT_FORMAT);
 
     const step: ScrollStep = {
       ...this.createBaseStep(
@@ -1218,7 +1214,7 @@ export class Recorder {
     );
     const screenshotData = capture.screenshotData;
     const screenshotPath = await this.saveScreenshot(screenshotData);
-    const screenshotDataUrl = this.toScreenshotDataUrl(screenshotData);
+    const screenshotDataUrl = toScreenshotDataUrl(screenshotData, env.SCREENSHOT_FORMAT);
     const viewportCapture = clip
       ? await this.captureScreenshot(
         0,
@@ -1228,7 +1224,9 @@ export class Recorder {
       : null;
     const fullScreenshotData = viewportCapture?.screenshotData ?? screenshotData;
     const fullScreenshotPath = clip ? await this.saveScreenshot(fullScreenshotData) : screenshotPath;
-    const fullScreenshotDataUrl = clip ? this.toScreenshotDataUrl(fullScreenshotData) : screenshotDataUrl;
+    const fullScreenshotDataUrl = clip
+      ? toScreenshotDataUrl(fullScreenshotData, env.SCREENSHOT_FORMAT)
+      : screenshotDataUrl;
 
     // Check if should redact
     const redactScreenshot = this.shouldRedactPaste(text, fieldName);
@@ -1255,7 +1253,7 @@ export class Recorder {
       displayText: `Paste in ${fieldName}`,
       caption: `Paste in "${fieldName}"`,
       rawValue: text,
-      screenshotDataUrl: this.toScreenshotDataUrl(finalScreenshotData),
+      screenshotDataUrl: toScreenshotDataUrl(finalScreenshotData, env.SCREENSHOT_FORMAT),
       viewportRedactionRects: capture.viewportRedactionRects,
     };
 

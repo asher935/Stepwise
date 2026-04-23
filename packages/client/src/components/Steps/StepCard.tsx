@@ -27,7 +27,6 @@ export function StepCard({ step }: StepCardProps) {
     || step.viewportRedactionRects?.length
     || step.pageRedactionRects?.length
   ) || step.action === 'type' || step.action === 'paste';
-  // Expand if hovered, or if it's the latest card and nothing else is hovered
   const shouldExpand = isHovered || (isLatest && !hoveredStepId && !isCollapsed);
 
   const handleMouseEnter = useCallback(() => {
@@ -35,7 +34,6 @@ export function StepCard({ step }: StepCardProps) {
   }, [setHoveredStepId, step.id]);
 
   const handleMouseLeave = useCallback(() => {
-    // Only clear hover if this is the currently hovered card
     if (hoveredStepId === step.id) {
       setHoveredStepId(null);
     }
@@ -55,7 +53,6 @@ export function StepCard({ step }: StepCardProps) {
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
-      {/* Top Section with Icon and Info */}
       <button
         type="button"
         className={`p-6 flex items-start space-x-5 w-full cursor-pointer bg-transparent border-0 text-left`}
@@ -104,7 +101,6 @@ export function StepCard({ step }: StepCardProps) {
         </div>
       </button>
 
-      {/* Screenshot Preview with animated collapse */}
       <div className={`px-6 pb-6 transition-all duration-500 ease-in-out ${!shouldExpand ? 'max-h-0 opacity-0 overflow-hidden pb-0' : 'max-h-[500px] opacity-100'}`}>
         <button
           type="button"

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'bun:test';
-import type { SessionState } from '@stepwise/shared';
+import type { ApiResponse, CreateSessionResponse, SessionState } from '@stepwise/shared';
 import { Elysia } from 'elysia';
 import { sessionRoutes } from './session.js';
 import { sessionManager } from '../services/SessionManager.js';
@@ -7,13 +7,7 @@ import { sessionManager } from '../services/SessionManager.js';
 const app = new Elysia().use(sessionRoutes);
 const createdSessionIds = new Set<string>();
 
-type RecordingResponse = {
-  success: boolean;
-  data?: SessionState | null;
-  error?: { code: string; message: string };
-};
-
-async function createActiveSession(): Promise<{ sessionId: string; token: string }> {
+async function createActiveSession(): Promise<CreateSessionResponse> {
   const { sessionId, token } = await sessionManager.createSession();
   createdSessionIds.add(sessionId);
 
@@ -26,7 +20,7 @@ async function createActiveSession(): Promise<{ sessionId: string; token: string
   return { sessionId, token };
 }
 
-async function setRecordingRequest(sessionId: string, token: string, paused: boolean): Promise<RecordingResponse> {
+async function setRecordingRequest(sessionId: string, token: string, paused: boolean): Promise<ApiResponse<SessionState | null>> {
   const response = await app.handle(new Request(`http://localhost/api/sessions/${sessionId}/recording`, {
     method: 'POST',
     headers: {
@@ -36,7 +30,7 @@ async function setRecordingRequest(sessionId: string, token: string, paused: boo
     body: JSON.stringify({ paused }),
   })) as Response;
 
-  return JSON.parse(await response.text()) as RecordingResponse;
+  return JSON.parse(await response.text()) as ApiResponse<SessionState | null>;
 }
 
 afterEach(async () => {

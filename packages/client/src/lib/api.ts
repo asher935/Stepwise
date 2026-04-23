@@ -1,22 +1,60 @@
 import type {
-  ExportFormat,
+  ApiResponse,
+  CreateSessionResponse,
+  ExportOptions,
   ExportResult,
+  ImportPreviewResult,
   ImportResult,
-  ScreenshotMode,
   SessionState,
   Step,
-  StepLegendItem,
-  StepwiseManifest,
+  ToggleRedactionResult,
+  UpdateStepRequest,
+  UploadFileResult,
 } from '@stepwise/shared';
 import { getRuntimeConfig } from './runtime';
 
-interface ApiResponse<T> {
-  success: boolean;
-  data?: T;
-  error?: {
-    code: string;
-    message: string;
-  };
+function isJsonObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function parseApiResponse<T>(
+  raw: string,
+  fallbackSuccess: boolean,
+  context: { method: string; path: string; status: number }
+): ApiResponse<T> {
+  if (raw.length === 0) {
+    return { success: fallbackSuccess };
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!isJsonObject(parsed)) {
+      return { success: fallbackSuccess };
+    }
+
+    const success = parsed['success'];
+    const error = parsed['error'];
+
+    return {
+      success: typeof success === 'boolean' ? success : fallbackSuccess,
+      data: parsed['data'] as T | undefined,
+      error: isJsonObject(error)
+        && typeof error['code'] === 'string'
+        && typeof error['message'] === 'string'
+        ? {
+            code: error['code'],
+            message: error['message'],
+          }
+        : undefined,
+    };
+  } catch (error) {
+    console.error('[API] Invalid JSON response', {
+      ...context,
+      body: raw.slice(0, 200),
+      error,
+    });
+    throw new Error(`Invalid response from ${context.path}`);
+  }
 }
 
 class ApiClient {
@@ -30,11 +68,11 @@ class ApiClient {
     this.token = null;
   }
 
-  private async request<T>(
+  private async request<TResponse, TRequest = never>(
     method: string,
     path: string,
-    body?: unknown
-  ): Promise<T> {
+    body?: TRequest
+  ): Promise<TResponse> {
     const runtimeConfig = getRuntimeConfig();
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -50,16 +88,11 @@ class ApiClient {
       body: body ? JSON.stringify(body) : undefined,
     });
 
-    const raw = await response.text();
-    let parsed: ApiResponse<T> | null = null;
-    if (raw.length > 0) {
-      try {
-        parsed = JSON.parse(raw) as ApiResponse<T>;
-      } catch {
-        parsed = null;
-      }
-    }
-    const result = parsed ?? { success: response.ok } as ApiResponse<T>;
+    const result = parseApiResponse<TResponse>(
+      await response.text(),
+      response.ok,
+      { method, path, status: response.status }
+    );
 
     if (!response.ok) {
       throw new Error(result.error?.message ?? `Request failed (${response.status})`);
@@ -69,10 +102,49 @@ class ApiClient {
       throw new Error(result.error?.message ?? 'Request failed');
     }
 
-    return result.data as T;
+    if (result.data === undefined) {
+      throw new Error('Request succeeded without response data');
+    }
+
+    return result.data;
   }
 
-  async createSession(): Promise<{ sessionId: string; token: string }> {
+  private async requestVoid<TRequest = never>(
+    method: string,
+    path: string,
+    body?: TRequest
+  ): Promise<void> {
+    const runtimeConfig = getRuntimeConfig();
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+
+    if (this.token) {
+      headers['Authorization'] = `Bearer ${this.token}`;
+    }
+
+    const response = await fetch(`${runtimeConfig.apiBaseUrl}${path}`, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+
+    const result = parseApiResponse<never>(
+      await response.text(),
+      response.ok,
+      { method, path, status: response.status }
+    );
+
+    if (!response.ok) {
+      throw new Error(result.error?.message ?? `Request failed (${response.status})`);
+    }
+
+    if (!result.success) {
+      throw new Error(result.error?.message ?? 'Request failed');
+    }
+  }
+
+  async createSession(): Promise<CreateSessionResponse> {
     return this.request('POST', '/sessions');
   }
 
@@ -85,7 +157,7 @@ class ApiClient {
   }
 
   async endSession(sessionId: string): Promise<void> {
-    await this.request('POST', `/sessions/${sessionId}/end`);
+    await this.requestVoid('POST', `/sessions/${sessionId}/end`);
   }
 
   async setRecordingPaused(sessionId: string, paused: boolean): Promise<SessionState> {
@@ -99,14 +171,7 @@ class ApiClient {
   async updateStep(
     sessionId: string,
     stepId: string,
-    updates: {
-      caption?: string;
-      redactScreenshot?: boolean;
-      redactedScreenshotPath?: string;
-      legendItems?: StepLegendItem[];
-      pageLegendItems?: StepLegendItem[];
-      selectedScreenshotMode?: ScreenshotMode;
-    }
+    updates: UpdateStepRequest
   ): Promise<Step> {
     return this.request('PATCH', `/sessions/${sessionId}/steps/${stepId}`, updates);
   }
@@ -115,12 +180,12 @@ class ApiClient {
     sessionId: string,
     stepId: string,
     redact: boolean
-  ): Promise<{ redactedScreenshotPath: string | null; screenshotDataUrl: string | null }> {
+  ): Promise<ToggleRedactionResult> {
     return this.request('POST', `/sessions/${sessionId}/steps/${stepId}/redact`, { redact });
   }
 
   async deleteStep(sessionId: string, stepId: string): Promise<void> {
-    await this.request('DELETE', `/sessions/${sessionId}/steps/${stepId}`);
+    await this.requestVoid('DELETE', `/sessions/${sessionId}/steps/${stepId}`);
   }
 
   async insertStep(
@@ -140,7 +205,7 @@ class ApiClient {
     file: File,
     x: number,
     y: number
-  ): Promise<{ fileName: string; size: number }> {
+  ): Promise<UploadFileResult> {
     const runtimeConfig = getRuntimeConfig();
     const formData = new FormData();
     formData.append('file', file);
@@ -158,7 +223,11 @@ class ApiClient {
       body: formData,
     });
 
-    const result = await response.json() as ApiResponse<{ fileName: string; size: number }>;
+    const result = parseApiResponse<UploadFileResult>(
+      await response.text(),
+      response.ok,
+      { method: 'POST', path: `/sessions/${sessionId}/upload`, status: response.status }
+    );
 
     if (!result.success || !result.data) {
       throw new Error(result.error?.message ?? 'File upload failed');
@@ -169,14 +238,7 @@ class ApiClient {
 
   async exportSession(
     sessionId: string,
-    options: {
-      format?: ExportFormat;
-      formats?: ExportFormat[];
-      title?: string;
-      includeScreenshots?: boolean;
-      password?: string;
-      theme?: 'light' | 'dark';
-    }
+    options: ExportOptions
   ): Promise<ExportResult> {
     return this.request('POST', `/export/${sessionId}`, options);
   }
@@ -223,7 +285,11 @@ class ApiClient {
       body: formData,
     });
 
-    const result = await response.json() as ApiResponse<ImportResult>;
+    const result = parseApiResponse<ImportResult>(
+      await response.text(),
+      response.ok,
+      { method: 'POST', path: `/import/${sessionId}`, status: response.status }
+    );
 
     if (!result.success || !result.data) {
       throw new Error(result.error?.message ?? 'Import failed');
@@ -236,7 +302,7 @@ class ApiClient {
     sessionId: string,
     file: File,
     password?: string
-  ): Promise<{ manifest: StepwiseManifest; stepCount: number; encrypted: boolean }> {
+  ): Promise<ImportPreviewResult> {
     const runtimeConfig = getRuntimeConfig();
     const formData = new FormData();
     formData.append('file', file);
@@ -255,7 +321,11 @@ class ApiClient {
       body: formData,
     });
 
-    const result = await response.json() as ApiResponse<{ manifest: StepwiseManifest; stepCount: number; encrypted: boolean }>;
+    const result = parseApiResponse<ImportPreviewResult>(
+      await response.text(),
+      response.ok,
+      { method: 'POST', path: `/import/${sessionId}/preview`, status: response.status }
+    );
 
     if (!result.success || !result.data) {
       throw new Error(result.error?.message ?? 'Preview failed');

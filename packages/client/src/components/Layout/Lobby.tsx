@@ -26,7 +26,6 @@ export function Lobby({ onImportClick }: LobbyProps) {
     <div className="flex flex-col items-center justify-center h-full p-6 md:p-12 relative">
       <div className="max-w-5xl w-full flex flex-col items-center space-y-16">
 
-        {/* Header Section */}
         <div className="text-center space-y-6">
           <div className="inline-flex items-center px-4 py-1.5 rounded-full bg-white/40 border border-white/60 text-[#E67E22] text-xs font-bold uppercase tracking-wider mb-2">
             <Shield className="w-3.5 h-3.5 mr-2" />
@@ -40,7 +39,6 @@ export function Lobby({ onImportClick }: LobbyProps) {
           </p>
         </div>
 
-        {/* Action Center - Pill Input */}
         <form
           onSubmit={(e) => void handleStart(e)}
           className="w-full max-w-xl group relative"
@@ -71,14 +69,12 @@ export function Lobby({ onImportClick }: LobbyProps) {
           </div>
         </form>
 
-        {/* Error Display */}
         {error && (
           <div className="text-sm text-red-600 text-center font-medium px-4 py-2 bg-red-50 rounded-lg">
             {error}
           </div>
         )}
 
-        {/* Bento Grid Features */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 w-full">
           <BentoItem
             icon={<Layers className="w-6 h-6 text-[#E67E22]" />}
@@ -101,7 +97,6 @@ export function Lobby({ onImportClick }: LobbyProps) {
           />
         </div>
 
-        {/* Import Button */}
         <button
           type="button"
           onClick={onImportClick}

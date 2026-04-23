@@ -62,8 +62,6 @@ export function Toolbar() {
 
   return (
     <div className="h-16 bg-[#FDF2E9]/60 backdrop-blur-md border-b border-black/5 flex items-center px-6 space-x-6">
-
-      {/* Navigation Buttons */}
       <div className="flex items-center space-x-1">
         <button
           onClick={handleBack}
@@ -88,7 +86,6 @@ export function Toolbar() {
         </button>
       </div>
 
-      {/* URL Input */}
       <div className="flex-1 relative group">
         <div className="absolute left-4 top-1/2 -translate-y-1/2 text-[#E67E22]">
           <ShieldCheck size={14} />
@@ -107,7 +104,6 @@ export function Toolbar() {
         />
       </div>
 
-      {/* Viewport Dimensions */}
       <div className="flex items-center gap-2">
         <button
           type="button"

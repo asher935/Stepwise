@@ -240,6 +240,18 @@ export class CDPBridge {
     }
   }
 
+  private logNonCriticalError(
+    operation: string,
+    error: unknown,
+    context?: Record<string, unknown>
+  ): void {
+    console.warn(`[CDP:${this.session.id}] Non-critical ${operation} failure`, {
+      url: this.session.url,
+      ...context,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
   private async executeWithErrorHandling<T>(
     operation: () => Promise<T>,
     operationName: string,
@@ -1086,7 +1098,10 @@ export class CDPBridge {
   }
 
   private async takeFullPageScreenshot(): Promise<Buffer> {
-    const metrics = await this.getFullPageMetrics().catch(() => null);
+    const metrics = await this.getFullPageMetrics().catch((error: unknown) => {
+      this.logNonCriticalError('getFullPageMetrics', error);
+      return null;
+    });
 
     try {
       let screenshot = await this.takeFullPageScreenshotWithCDP();
@@ -1111,7 +1126,9 @@ export class CDPBridge {
   }
 
   private async restoreViewportAfterFullPageCapture(): Promise<void> {
-    await this.cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 1 }).catch(() => undefined);
+    await this.cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 1 }).catch((error: unknown) => {
+      this.logNonCriticalError('restorePageScaleFactor', error);
+    });
     await this.cdp.send('Emulation.setDeviceMetricsOverride', {
       width: env.BROWSER_VIEWPORT_WIDTH,
       height: env.BROWSER_VIEWPORT_HEIGHT,
@@ -1124,11 +1141,15 @@ export class CDPBridge {
         type: 'portraitPrimary',
         angle: 0,
       },
-    }).catch(() => undefined);
+    }).catch((error: unknown) => {
+      this.logNonCriticalError('restoreDeviceMetricsOverride', error);
+    });
     await this.page.setViewportSize({
       width: env.BROWSER_VIEWPORT_WIDTH,
       height: env.BROWSER_VIEWPORT_HEIGHT,
-    }).catch(() => undefined);
+    }).catch((error: unknown) => {
+      this.logNonCriticalError('restoreViewportSize', error);
+    });
   }
 
   private async takeFullPageScreenshotWithCDP(): Promise<Buffer | null> {
@@ -1194,8 +1215,10 @@ export class CDPBridge {
     } finally {
       try {
         await this.removeHighlightOverlay();
-      } catch {
-        void 0;
+      } catch (error) {
+        this.logNonCriticalError('removeHighlightOverlay', error, {
+          mode: 'full-page-safe-highlight',
+        });
       }
     }
   }
@@ -1210,7 +1233,9 @@ export class CDPBridge {
       mirrorPage = await this.page.context().newPage();
       await mirrorPage.setViewportSize(snapshot.viewport);
       await mirrorPage.setContent(snapshot.html, { waitUntil: 'load' });
-      await mirrorPage.waitForLoadState('networkidle', { timeout: 3000 }).catch(() => undefined);
+      await mirrorPage.waitForLoadState('networkidle', { timeout: 3000 }).catch((error: unknown) => {
+        this.logNonCriticalError('mirrorPageWaitForLoadState', error);
+      });
 
       if (highlightBoundingBox) {
         const borderColor = hexToRgba(this.highlightColor, 0.95);
@@ -1238,11 +1263,14 @@ export class CDPBridge {
         mirrorPage.screenshot(this.getFullPageScreenshotOptions()),
         this.fullPageScreenshotTimeoutMs
       );
-    } catch {
+    } catch (error) {
+      this.logNonCriticalError('renderPageSnapshotFullPageScreenshot', error);
       return null;
     } finally {
       if (mirrorPage) {
-        await mirrorPage.close().catch(() => undefined);
+        await mirrorPage.close().catch((error: unknown) => {
+          this.logNonCriticalError('closeMirrorPage', error);
+        });
       }
     }
   }
@@ -1483,8 +1511,10 @@ export class CDPBridge {
     } finally {
       try {
         await this.removeHighlightOverlay();
-      } catch {
-        void 0;
+      } catch (error) {
+        this.logNonCriticalError('removeHighlightOverlay', error, {
+          mode: fullPage ? 'full-page-highlight' : 'viewport-highlight',
+        });
       }
     }
   }

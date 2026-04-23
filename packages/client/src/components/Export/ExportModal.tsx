@@ -28,7 +28,6 @@ export function ExportModal({ open, onOpenChange, guideTitle, setGuideTitle }: E
   const [showPassword, setShowPassword] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
 
-  // Close modal on ESC key press
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && open) {

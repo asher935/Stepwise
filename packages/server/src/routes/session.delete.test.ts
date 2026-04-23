@@ -1,17 +1,12 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 import { Elysia } from 'elysia';
-import type { Step } from '@stepwise/shared';
+import type { ApiResponse, CreateSessionResponse, Step } from '@stepwise/shared';
 import { sessionRoutes } from './session.js';
 import { sessionManager } from '../services/SessionManager.js';
 
 const app = new Elysia().use(sessionRoutes);
 const createdSessionIds = new Set<string>();
-
-type DeleteResponse = {
-  success: boolean;
-  data?: boolean;
-  error?: { code: string; message: string };
-};
+type MalformedStoredStep = Partial<Step> | number | null;
 
 function createNavigateStep(id: string, index: number): Step {
   return {
@@ -27,13 +22,13 @@ function createNavigateStep(id: string, index: number): Step {
   };
 }
 
-async function createSession(): Promise<{ sessionId: string; token: string }> {
+async function createSession(): Promise<CreateSessionResponse> {
   const { sessionId, token } = await sessionManager.createSession();
   createdSessionIds.add(sessionId);
   return { sessionId, token };
 }
 
-async function deleteStepRequest(sessionId: string, token: string, stepId: string): Promise<DeleteResponse> {
+async function deleteStepRequest(sessionId: string, token: string, stepId: string): Promise<ApiResponse<boolean>> {
   const response = await app.handle(new Request(`http://localhost/api/sessions/${sessionId}/steps/${stepId}`, {
     method: 'DELETE',
     headers: {
@@ -41,7 +36,7 @@ async function deleteStepRequest(sessionId: string, token: string, stepId: strin
     },
   })) as Response;
 
-  return JSON.parse(await response.text()) as DeleteResponse;
+  return JSON.parse(await response.text()) as ApiResponse<boolean>;
 }
 
 afterEach(async () => {
@@ -96,13 +91,13 @@ describe('DELETE /api/sessions/:sessionId/steps/:stepId', () => {
       throw new Error('Session not found in test setup');
     }
 
-    (session as { steps: unknown }).steps = [
+    session.steps = [
       null,
       createNavigateStep('step-1', 0),
       { id: '', index: 88 },
       42,
       createNavigateStep('step-2', 5),
-    ];
+    ] as MalformedStoredStep[] as Step[];
 
     const result = await deleteStepRequest(sessionId, token, 'step-1');
 

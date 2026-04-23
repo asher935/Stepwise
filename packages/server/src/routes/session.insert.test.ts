@@ -1,17 +1,11 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 import { Elysia } from 'elysia';
-import type { Step } from '@stepwise/shared';
+import type { ApiResponse, CreateSessionResponse, Step } from '@stepwise/shared';
 import { sessionRoutes } from './session.js';
 import { sessionManager } from '../services/SessionManager.js';
 
 const app = new Elysia().use(sessionRoutes);
 const createdSessionIds = new Set<string>();
-
-type InsertResponse = {
-  success: boolean;
-  data?: Step[];
-  error?: { code: string; message: string };
-};
 
 function createNavigateStep(id: string, index: number): Step {
   return {
@@ -27,7 +21,7 @@ function createNavigateStep(id: string, index: number): Step {
   };
 }
 
-async function createSession(): Promise<{ sessionId: string; token: string }> {
+async function createSession(): Promise<CreateSessionResponse> {
   const { sessionId, token } = await sessionManager.createSession();
   createdSessionIds.add(sessionId);
   return { sessionId, token };
@@ -38,7 +32,7 @@ async function insertStepRequest(
   token: string,
   index: number,
   step: Step
-): Promise<InsertResponse> {
+): Promise<ApiResponse<Step[]>> {
   const response = await app.handle(new Request(`http://localhost/api/sessions/${sessionId}/steps`, {
     method: 'POST',
     headers: {
@@ -48,7 +42,7 @@ async function insertStepRequest(
     body: JSON.stringify({ index, step }),
   })) as Response;
 
-  return JSON.parse(await response.text()) as InsertResponse;
+  return JSON.parse(await response.text()) as ApiResponse<Step[]>;
 }
 
 afterEach(async () => {
@@ -113,7 +107,7 @@ describe('POST /api/sessions/:sessionId/steps', () => {
       body: JSON.stringify({ index: 0, autoDetect: true }),
     })) as Response;
 
-    const result = JSON.parse(await response.text()) as InsertResponse;
+    const result = JSON.parse(await response.text()) as ApiResponse<Step[]>;
     expect(result.success).toBe(false);
     expect(result.error?.message).toBe('Insert auto-detect is only available during an active live session');
   });

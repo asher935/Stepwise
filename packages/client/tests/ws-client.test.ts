@@ -3,7 +3,11 @@ import { wsClient } from '../src/lib/ws';
 
 it('sends mouse click input when connected', () => {
   const sent: string[] = [];
-  (wsClient as any).ws = { readyState: 1, send: (payload: string) => sent.push(payload) };
+  wsClient.setSocketForTesting({
+    readyState: WebSocket.OPEN,
+    send: (payload: string) => sent.push(payload),
+    close: () => undefined,
+  });
 
   wsClient.sendMouseClick(10, 20, 'left');
 
@@ -17,7 +21,11 @@ it('sends mouse click input when connected', () => {
 
 it('sends mouse move input when connected', () => {
   const sent: string[] = [];
-  (wsClient as any).ws = { readyState: 1, send: (payload: string) => sent.push(payload) };
+  wsClient.setSocketForTesting({
+    readyState: WebSocket.OPEN,
+    send: (payload: string) => sent.push(payload),
+    close: () => undefined,
+  });
 
   wsClient.sendMouseMove(50, 75);
 

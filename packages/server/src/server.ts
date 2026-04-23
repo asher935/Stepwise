@@ -21,35 +21,17 @@ function registerSessionListeners(): void {
   });
 
   sessionManager.on('session:ended', (sessionId, data) => {
-    const reason = (
-      typeof data === 'object' &&
-      data !== null &&
-      'reason' in data &&
-      (data.reason === 'user' || data.reason === 'timeout' || data.reason === 'error')
-    )
-      ? data.reason
-      : 'error';
-
-    void notifySessionEnded(sessionId, reason).catch((error: unknown) => {
+    void notifySessionEnded(sessionId, data.reason).catch((error: unknown) => {
       console.error('[Server] Failed to notify ended session:', error);
     });
   });
 
   sessionManager.on('session:expiring', (sessionId, data) => {
-    const remainingMs = (
-      typeof data === 'object' &&
-      data !== null &&
-      'remainingMs' in data &&
-      typeof data.remainingMs === 'number'
-    )
-      ? data.remainingMs
-      : 0;
-
-    if (remainingMs <= 0) {
+    if (data.remainingMs <= 0) {
       return;
     }
 
-    notifySessionExpiring(sessionId, remainingMs);
+    notifySessionExpiring(sessionId, data.remainingMs);
   });
 
   sessionManager.on('session:updated', (sessionId) => {

@@ -27,13 +27,11 @@ export function EditorShell() {
   const [showFinish, setShowFinish] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
-  // Initialize WebSocket for session
   useEffect(() => {
     const cleanup = initWebSocket();
     return cleanup;
   }, [initWebSocket]);
 
-  // Initialize WebSocket handlers for replay
   useReplayWebSocket();
 
   const handleConfirmFinish = async () => {
@@ -45,7 +43,6 @@ export function EditorShell() {
 
   return (
     <div className="flex flex-col h-screen bg-[#FDF2E9] overflow-hidden text-[#2D241E]">
-      {/* Header */}
       <header className="h-20 border-b border-black/5 bg-white/40 backdrop-blur-xl px-6 flex items-center justify-between z-50">
           <div className="flex items-center space-x-6">
             <button
@@ -106,9 +103,7 @@ export function EditorShell() {
         </div>
       </header>
 
-      {/* Main Layout */}
       <div className="flex flex-1 overflow-hidden relative">
-        {/* Sidebar - Steps List */}
         <aside
           className={`
             fixed lg:relative z-40 h-[calc(100vh-80px)] bg-white/20 backdrop-blur-2xl border-r border-black/5
@@ -124,7 +119,6 @@ export function EditorShell() {
             </div>
           </div>
 
-          {/* Replay Controls */}
           <div className="px-6 mb-4">
             <ReplayControls />
           </div>
@@ -134,7 +128,6 @@ export function EditorShell() {
           </div>
         </aside>
 
-        {/* Browser Area */}
         <main className="flex-1 flex flex-col bg-transparent relative overflow-hidden">
           <Toolbar />
           <Viewport />
@@ -145,7 +138,6 @@ export function EditorShell() {
       <ImportModal open={showImport} onOpenChange={setShowImport} setGuideTitle={setGuideTitle} />
       <DebugOverlay />
 
-      {/* Finish Modal */}
       {showFinish && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <button

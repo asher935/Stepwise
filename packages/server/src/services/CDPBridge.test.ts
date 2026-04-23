@@ -3,15 +3,36 @@ import sharp from 'sharp';
 import { CDPBridge } from './CDPBridge.js';
 import type { ServerSession } from '../types/session.js';
 
+type ScreenshotOptions = {
+  fullPage?: boolean;
+};
+
+type FullPageMetrics = {
+  viewportHeight: number;
+  pageHeight: number;
+  hasNestedScrollableContent: boolean;
+};
+
+type CdpLayoutMetrics = {
+  contentSize: {
+    width: number;
+    height: number;
+  };
+};
+
+type CdpScreenshotResult = {
+  data: string;
+};
+
 type MockPage = {
-  screenshot: (options: Record<string, unknown>) => Promise<Buffer>;
+  screenshot: (options: ScreenshotOptions) => Promise<Buffer>;
   setViewportSize: (size: { width: number; height: number }) => Promise<void>;
   waitForTimeout: (ms: number) => Promise<void>;
-  evaluate: <T>(fn: unknown, arg?: unknown) => Promise<T>;
+  evaluate: () => Promise<FullPageMetrics | boolean | undefined>;
 };
 
 type MockCDP = {
-  send: (method: string, params?: Record<string, unknown>) => Promise<unknown>;
+  send: (method: string) => Promise<CdpLayoutMetrics | CdpScreenshotResult | undefined>;
 };
 
 const bridges: CDPBridge[] = [];
@@ -72,7 +93,7 @@ afterEach(async () => {
 describe('CDPBridge screenshots', () => {
   it('captures viewport screenshots by default', async () => {
     const screenshotBuffer = await createPng(40);
-    const screenshotCalls: Array<Record<string, unknown>> = [];
+    const screenshotCalls: ScreenshotOptions[] = [];
 
     const page: MockPage = {
       screenshot: async (options) => {
@@ -100,7 +121,7 @@ describe('CDPBridge screenshots', () => {
 
   it('falls back to Playwright full-page screenshots when CDP capture fails', async () => {
     const screenshotBuffer = await createPng(120);
-    const screenshotCalls: Array<Record<string, unknown>> = [];
+    const screenshotCalls: ScreenshotOptions[] = [];
 
     const page: MockPage = {
       screenshot: async (options) => {
@@ -134,7 +155,7 @@ describe('CDPBridge screenshots', () => {
   it('retries full-page capture when the initial result is only viewport-sized', async () => {
     const viewportBuffer = await createPng(600);
     const fullPageBuffer = await createPng(1200);
-    const screenshotCalls: Array<Record<string, unknown>> = [];
+    const screenshotCalls: ScreenshotOptions[] = [];
     let evaluateCalls = 0;
 
     const page: MockPage = {
@@ -151,12 +172,12 @@ describe('CDPBridge screenshots', () => {
             viewportHeight: 600,
             pageHeight: 1200,
             hasNestedScrollableContent: false,
-          } as never;
+          };
         }
         if (evaluateCalls === 2) {
-          return true as never;
+          return true;
         }
-        return undefined as never;
+        return undefined;
       },
     };
 
@@ -189,7 +210,7 @@ describe('CDPBridge screenshots', () => {
 
   it('falls back to Playwright full-page screenshots when CDP would downscale the page', async () => {
     const screenshotBuffer = await createPng(1200);
-    const screenshotCalls: Array<Record<string, unknown>> = [];
+    const screenshotCalls: ScreenshotOptions[] = [];
     const captureCalls: string[] = [];
 
     const page: MockPage = {
@@ -203,7 +224,7 @@ describe('CDPBridge screenshots', () => {
         viewportHeight: 600,
         pageHeight: 20000,
         hasNestedScrollableContent: false,
-      }) as never,
+      }),
     };
 
     const cdp: MockCDP = {

@@ -2,10 +2,6 @@ import { useEffect } from 'react';
 import { wsClient } from '../lib/ws';
 import { useReplayStore } from '../stores/replayStore';
 
-/**
- * Hook to initialize WebSocket message handlers for replay functionality.
- * This should be called once in the EditorShell component.
- */
 export function useReplayWebSocket() {
   const handleReplayStatus = useReplayStore((s) => s.handleReplayStatus);
   const handleStepStart = useReplayStore((s) => s.handleStepStart);

@@ -9,9 +9,11 @@ type MessageHandler = (message: ServerMessage) => void;
 type ConnectionHandler = () => void;
 type DisconnectHandler = (event: CloseEvent) => void;
 type SendHandler = (message: ClientMessage) => void;
+type WebSocketSender = Pick<WebSocket, 'readyState' | 'send' | 'close'>;
 
 class WebSocketClient {
   private ws: WebSocket | null = null;
+  private testingSocket: WebSocketSender | null = null;
   private messageHandlers: Set<MessageHandler> = new Set();
   private sendHandlers: Set<SendHandler> = new Set();
   private connectHandlers: Set<ConnectionHandler> = new Set();
@@ -117,15 +119,21 @@ class WebSocketClient {
     this.sessionId = null;
     this.token = null;
     this.reconnectAttempts = this.maxReconnectAttempts;
+    this.testingSocket = null;
     this.ws?.close();
     this.ws = null;
     this.currentUrl = null;
   }
 
+  setSocketForTesting(socket: WebSocketSender | null): void {
+    this.testingSocket = socket;
+  }
+
   send(message: ClientMessage): void {
-    if (this.ws?.readyState === WebSocket.OPEN) {
+    const socket = this.testingSocket ?? this.ws;
+    if (socket?.readyState === WebSocket.OPEN) {
       this.sendHandlers.forEach(h => { h(message); });
-      this.ws.send(JSON.stringify(message));
+      socket.send(JSON.stringify(message));
     }
   }
 
@@ -150,7 +158,7 @@ class WebSocketClient {
   }
 
   get isConnected(): boolean {
-    return this.ws?.readyState === WebSocket.OPEN;
+    return (this.testingSocket ?? this.ws)?.readyState === WebSocket.OPEN;
   }
 
   get url(): string | null {

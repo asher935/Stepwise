@@ -3,8 +3,7 @@ import type { ReplayStatus, ReplayOptions } from '@stepwise/shared';
 import { wsClient } from '../lib/ws';
 
 interface ReplayState {
-  // State
-  status: 'idle' | 'playing' | 'paused' | 'error' | 'completed';
+  status: ReplayStatus['state'];
   currentStepIndex: number;
   totalSteps: number;
   speed: number;
@@ -14,7 +13,6 @@ interface ReplayState {
 }
 
 interface ReplayStore extends ReplayState {
-  // Actions
   startReplay: (options?: Partial<ReplayOptions>) => void;
   pauseReplay: () => void;
   resumeReplay: () => void;
@@ -23,18 +21,15 @@ interface ReplayStore extends ReplayState {
   setStopOnError: (stopOnError: boolean) => void;
   setPlaybackIndex: (index: number) => void;
 
-  // WebSocket message handlers
   handleReplayStatus: (status: ReplayStatus) => void;
   handleStepStart: (stepIndex: number, stepId: string) => void;
   handleStepComplete: (stepIndex: number, stepId: string) => void;
   handleReplayError: (stepId: string | undefined, error: string) => void;
 
-  // Reset
   reset: () => void;
 }
 
 export const useReplayStore = create<ReplayStore>((set, get) => ({
-  // Initial state
   status: 'idle',
   currentStepIndex: 0,
   totalSteps: 0,
@@ -43,7 +38,6 @@ export const useReplayStore = create<ReplayStore>((set, get) => ({
   error: undefined,
   activeStepId: null,
 
-  // Actions
   startReplay: (options) => {
     const state = get();
     const mergedOptions: ReplayOptions = {
@@ -51,13 +45,11 @@ export const useReplayStore = create<ReplayStore>((set, get) => ({
       stopOnError: options?.stopOnError ?? state.stopOnError,
     };
 
-    // Send WebSocket message to start replay
     wsClient.send({
       type: 'replay:start',
       options: mergedOptions,
     });
 
-    // Update local state immediately for better UX
     set({
       speed: mergedOptions.speed,
       stopOnError: mergedOptions.stopOnError,
@@ -98,7 +90,6 @@ export const useReplayStore = create<ReplayStore>((set, get) => ({
     set({ currentStepIndex: index });
   },
 
-  // WebSocket message handlers
   handleReplayStatus: (status) => {
     set({
       status: status.state,
@@ -115,22 +106,19 @@ export const useReplayStore = create<ReplayStore>((set, get) => ({
     });
   },
 
-  handleStepComplete: (stepIndex, stepId) => {
-    const state = get();
-    // Keep the step active until the next one starts
-    if (state.activeStepId === stepId) {
-      // Step completed, but keep it highlighted for visual continuity
+  handleStepComplete: (_stepIndex, stepId) => {
+    if (get().activeStepId !== stepId) {
+      return;
     }
   },
 
-  handleReplayError: (stepId, error) => {
+  handleReplayError: (_stepId, error) => {
     set({
       status: 'error',
       error,
     });
   },
 
-  // Reset
   reset: () => {
     set({
       status: 'idle',

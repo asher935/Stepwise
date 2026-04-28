@@ -25,7 +25,7 @@ services:
       - stepwise-bun:/root/.bun
       - stepwise-tmp:/tmp/stepwise
     working_dir: /app
-    command: sh -lc "bun install && bun run dev"
+    command: sh -lc "bun install && bun run --filter '!@stepwise/desktop' dev"
     shm_size: "2gb"
 
 volumes:

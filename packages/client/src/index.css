@@ -1,47 +1,100 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400&family=IBM+Plex+Sans:wght@300;400;600&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   :root {
+    /* IBM Carbon Design System — White Theme */
+    --cds-background: #ffffff;
+    --cds-background-hover: #e8e8e8;
+    --cds-layer-01: #f4f4f4;
+    --cds-layer-02: #e0e0e0;
+    --cds-text-primary: #161616;
+    --cds-text-secondary: #525252;
+    --cds-text-placeholder: #6f6f6f;
+    --cds-text-disabled: #8d8d8d;
+    --cds-border-subtle: #c6c6c6;
+    --cds-border-strong: #8d8d8d;
+    /* Button backgrounds — always Blue 60, never shift in dark mode */
+    --cds-button-bg: #0f62fe;
+    --cds-button-bg-hover: #0353e9;
+    --cds-button-bg-active: #002d9c;
+    /* Interactive — for links, focus rings, text accents */
+    --cds-interactive: #0f62fe;
+    --cds-interactive-hover: #0353e9;
+    --cds-interactive-selected: #edf5ff;
+    /* Link */
+    --cds-link-primary: #0f62fe;
+    --cds-link-hover: #0043ce;
+    /* Tag pattern */
+    --cds-tag-bg: #edf5ff;
+    --cds-tag-text: #0f62fe;
+    /* Support */
+    --cds-support-error: #da1e28;
+    --cds-support-success: #24a148;
+    --cds-support-warning: #f1c21b;
+    /* Navigation — dark in both themes */
+    --cds-nav-bg: #161616;
+    --cds-nav-hover: #262626;
+    --cds-nav-text: #c6c6c6;
+    --cds-nav-text-active: #ffffff;
+    /* Misc */
+    --cds-focus: #0f62fe;
+    --cds-overlay: rgba(22, 22, 22, 0.5);
+
+    /* Tailwind compatibility */
     --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --primary: 221.2 83.2% 53.3%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
-    --radius: 0.5rem;
+    --foreground: 0 0% 9%;
+    --border: 0 0% 78%;
+    --radius: 0rem;
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 48%;
+    /* IBM Carbon Design System — Gray 100 Theme */
+    --cds-background: #161616;
+    --cds-background-hover: #3d3d3d;
+    --cds-layer-01: #262626;
+    --cds-layer-02: #393939;
+    --cds-text-primary: #f4f4f4;
+    --cds-text-secondary: #c6c6c6;
+    --cds-text-placeholder: #6f6f6f;
+    --cds-text-disabled: #525252;
+    /* Borders more visible in dark mode (using Gray 60 instead of 80) */
+    --cds-border-subtle: #525252;
+    --cds-border-strong: #6f6f6f;
+    /* Button backgrounds — UNCHANGED in dark mode */
+    --cds-button-bg: #0f62fe;
+    --cds-button-bg-hover: #0353e9;
+    --cds-button-bg-active: #002d9c;
+    /* Interactive — text/link colors shift lighter for contrast on dark bg */
+    --cds-interactive: #78a9ff;
+    --cds-interactive-hover: #a6c8ff;
+    --cds-interactive-selected: #002d9c;
+    /* Link */
+    --cds-link-primary: #78a9ff;
+    --cds-link-hover: #a6c8ff;
+    /* Tag pattern */
+    --cds-tag-bg: #002d9c;
+    --cds-tag-text: #78a9ff;
+    /* Support */
+    --cds-support-error: #ff8389;
+    --cds-support-success: #42be65;
+    --cds-support-warning: #f1c21b;
+    /* Navigation */
+    --cds-nav-bg: #262626;
+    --cds-nav-hover: #353535;
+    --cds-nav-text: #c6c6c6;
+    --cds-nav-text-active: #ffffff;
+    /* Misc */
+    --cds-focus: #78a9ff;
+    --cds-overlay: rgba(0, 0, 0, 0.65);
+
+    --background: 0 0% 9%;
+    --foreground: 0 0% 96%;
+    --border: 0 0% 32%;
+    --radius: 0rem;
   }
 }
 
@@ -50,8 +103,13 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
+    background-color: var(--cds-background);
+    color: var(--cds-text-primary);
+    font-family: 'IBM Plex Sans', 'Helvetica Neue', Arial, sans-serif;
     font-feature-settings: "rlig" 1, "calt" 1;
+  }
+  code, pre, .font-mono {
+    font-family: 'IBM Plex Mono', Menlo, Courier, monospace;
   }
 }
 

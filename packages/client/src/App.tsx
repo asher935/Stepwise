@@ -5,12 +5,14 @@ import { Lobby } from '@/components/Layout/Lobby';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { api } from '@/lib/api';
 import { useSessionStore } from '@/stores/sessionStore';
+import { useThemeStore } from '@/stores/themeStore';
 
 export default function App() {
   const sessionState = useSessionStore((s) => s.sessionState);
   const token = useSessionStore((s) => s.token);
   const setGuideTitle = useSessionStore((s) => s.setGuideTitle);
   const [showImport, setShowImport] = useState(false);
+  const isDark = useThemeStore((s) => s.isDark);
 
   const isActive = sessionState?.status === 'active';
 
@@ -21,6 +23,15 @@ export default function App() {
       api.clearToken();
     }
   }, [token]);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    if (isDark) {
+      root.classList.add('dark');
+    } else {
+      root.classList.remove('dark');
+    }
+  }, [isDark]);
 
   return (
     <TooltipProvider>

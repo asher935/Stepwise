@@ -25,8 +25,35 @@ class WebSocketClient {
   private sessionId: string | null = null;
   private token: string | null = null;
   private currentUrl: string | null = null;
+  // Pending disconnect timer — lets StrictMode cleanup+remount cancel the
+  // churn before it reaches the server, which would otherwise tear down and
+  // re-create the CDP screencast and lose the shared stream.
+  private disconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
   connect(sessionId: string, token: string): void {
+    // If a disconnect for the same session is pending (StrictMode cleanup
+    // about to fire), cancel it — the WS is still live, reuse it.
+    if (this.disconnectTimer && this.sessionId === sessionId && this.token === token) {
+      clearTimeout(this.disconnectTimer);
+      this.disconnectTimer = null;
+      return;
+    }
+    // Pending disconnect for a different session — run it now so the new
+    // connection starts from a clean state.
+    if (this.disconnectTimer) {
+      clearTimeout(this.disconnectTimer);
+      this.disconnectTimer = null;
+      this.performDisconnect();
+    }
+    // Already connected/connecting to the same session — no-op.
+    if (
+      this.ws &&
+      this.sessionId === sessionId &&
+      this.token === token &&
+      (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)
+    ) {
+      return;
+    }
     this.sessionId = sessionId;
     this.token = token;
     this.doConnect();
@@ -115,6 +142,17 @@ class WebSocketClient {
   }
 
   disconnect(): void {
+    // Defer so a near-immediate connect() (e.g. React StrictMode's
+    // cleanup→remount) can cancel it before we tear down the server-side
+    // bridge and kill the shared CDP screencast.
+    if (this.disconnectTimer) return;
+    this.disconnectTimer = setTimeout(() => {
+      this.disconnectTimer = null;
+      this.performDisconnect();
+    }, 250);
+  }
+
+  private performDisconnect(): void {
     this.stopPing();
     this.sessionId = null;
     this.token = null;

@@ -18,6 +18,29 @@ export interface StepwiseAppOptions {
   serveClient?: boolean;
 }
 
+// Elysia's ws callbacks receive a fresh context object each time where
+// ws.data is the Elysia route ctx (request/query/route/...), not the
+// { sessionId, token, ... } shape declared by WSConnection. The query
+// params do stay available on ws.data.query across callbacks, so copy
+// them onto the flat fields downstream code expects.
+function hydrateWsConnection(
+  ws: ServerWebSocket<WSConnection> & {
+    data: Partial<WSConnection> & { query?: { sessionId?: string; token?: string } };
+  }
+): boolean {
+  const existingSessionId = ws.data.sessionId;
+  const existingToken = ws.data.token;
+  const sessionId = existingSessionId ?? ws.data.query?.sessionId;
+  const token = existingToken ?? ws.data.query?.token;
+  if (!sessionId || !token) return false;
+  ws.data.sessionId = sessionId;
+  ws.data.token = token;
+  if (ws.data.lastPingAt === undefined) {
+    ws.data.lastPingAt = Date.now();
+  }
+  return true;
+}
+
 export function getDefaultClientDistPath(): string {
   const configuredPath = process.env['STEPWISE_CLIENT_DIST'];
   if (configuredPath) {
@@ -58,19 +81,13 @@ export function createStepwiseApp(options: StepwiseAppOptions = {}) {
           data: WSConnection & { query?: { sessionId?: string; token?: string } };
         };
 
-        const sessionId = elysiaWs.data.query?.sessionId;
-        const token = elysiaWs.data.query?.token;
-
-        if (!sessionId || !token) {
+        // Elysia provides a fresh context object per callback, so sessionId/token
+        // must be read from query each time. Populate the flat fields in-place so
+        // downstream code (ws.data.sessionId) keeps working without touching query.
+        if (!hydrateWsConnection(elysiaWs)) {
           elysiaWs.close(1008, 'Missing sessionId or token');
           return;
         }
-
-        elysiaWs.data = {
-          sessionId,
-          token,
-          lastPingAt: Date.now(),
-        };
 
         void handleOpen(elysiaWs).catch((error: unknown) => {
           console.error('[WS] Open handler failed:', error);
@@ -78,12 +95,14 @@ export function createStepwiseApp(options: StepwiseAppOptions = {}) {
       },
       message(ws, message) {
         const elysiaWs = ws as unknown as ServerWebSocket<WSConnection>;
+        if (!hydrateWsConnection(elysiaWs)) return;
         void handleMessage(elysiaWs, message).catch((error: unknown) => {
           console.error('[WS] Message handler failed:', error);
         });
       },
       close(ws) {
         const elysiaWs = ws as unknown as ServerWebSocket<WSConnection>;
+        hydrateWsConnection(elysiaWs);
         void handleClose(elysiaWs).catch((error: unknown) => {
           console.error('[WS] Close handler failed:', error);
         });
